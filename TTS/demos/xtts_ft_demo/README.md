@@ -1,4 +1,4 @@
-# 🎤 XTTS Fine-Tuning 🖥️
+# 🐸🎤 XTTS Fine-Tuning 🖥️
 
 Welcome to the XTTS model fine-tuning repository! This project allows you to fine-tune XTTS (Cross-lingual Text-To-Speech) models.
 
