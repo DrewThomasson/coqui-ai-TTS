@@ -6,13 +6,57 @@ import tempfile
 import traceback
 
 import gradio as gr
+import librosa.display
+import numpy as np
+
+import os
 import torch
 import torchaudio
 
 from TTS.demos.xtts_ft_demo.utils.formatter import format_audio_list
 from TTS.demos.xtts_ft_demo.utils.gpt_train import train_gpt
+
 from TTS.tts.configs.xtts_config import XttsConfig
 from TTS.tts.models.xtts import Xtts
+
+import glob
+import zipfile
+import shutil
+
+def export_model(output_path):
+    try:
+        output_folder = os.path.join(output_path, "Finished_model_files")
+        os.makedirs(output_folder, exist_ok=True)
+        
+        # Zip the dataset
+        with zipfile.ZipFile(os.path.join(output_folder, "dataset.zip"), "w", zipfile.ZIP_DEFLATED) as zipf:
+            dataset_path = os.path.join(output_path, "dataset")
+            for root, dirs, files in os.walk(dataset_path):
+                for file in files:
+                    zipf.write(os.path.join(root, file),
+                               os.path.relpath(os.path.join(root, file),
+                                               os.path.join(dataset_path, "..")))
+        
+        # Find and process the best model
+        search_path = os.path.join(output_path, "run", "training", "**", "best_model.pth")
+        model_path = max(glob.glob(search_path, recursive=True), key=os.path.getctime)
+        
+        checkpoint = torch.load(model_path, map_location=torch.device("cpu"))
+        del checkpoint["optimizer"]
+        for key in list(checkpoint["model"].keys()):
+            if "dvae" in key:
+                del checkpoint["model"][key]
+        
+        torch.save(checkpoint, os.path.join(output_folder, "model.pth"))
+        
+        # Copy config and vocab files
+        model_dir = os.path.dirname(model_path)
+        shutil.copy2(os.path.join(model_dir, "config.json"), output_folder)
+        shutil.copy2(os.path.join(model_dir, "vocab.json"), output_folder)
+        
+        return f"Model exported successfully to {output_folder}"
+    except Exception as e:
+        return f"Export failed: {str(e)}"
 
 
 def clear_gpu_cache():
@@ -20,10 +64,7 @@ def clear_gpu_cache():
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
 
-
 XTTS_MODEL = None
-
-
 def load_model(xtts_checkpoint, xtts_config, xtts_vocab):
     global XTTS_MODEL
     clear_gpu_cache()
@@ -40,23 +81,17 @@ def load_model(xtts_checkpoint, xtts_config, xtts_vocab):
     print("Model Loaded!")
     return "Model Loaded!"
 
-
 def run_tts(lang, tts_text, speaker_audio_file):
     if XTTS_MODEL is None or not speaker_audio_file:
         return "You need to run the previous step to load the model !!", None, None
 
-    gpt_cond_latent, speaker_embedding = XTTS_MODEL.get_conditioning_latents(
-        audio_path=speaker_audio_file,
-        gpt_cond_len=XTTS_MODEL.config.gpt_cond_len,
-        max_ref_length=XTTS_MODEL.config.max_ref_len,
-        sound_norm_refs=XTTS_MODEL.config.sound_norm_refs,
-    )
+    gpt_cond_latent, speaker_embedding = XTTS_MODEL.get_conditioning_latents(audio_path=speaker_audio_file, gpt_cond_len=XTTS_MODEL.config.gpt_cond_len, max_ref_length=XTTS_MODEL.config.max_ref_len, sound_norm_refs=XTTS_MODEL.config.sound_norm_refs)
     out = XTTS_MODEL.inference(
         text=tts_text,
         language=lang,
         gpt_cond_latent=gpt_cond_latent,
         speaker_embedding=speaker_embedding,
-        temperature=XTTS_MODEL.config.temperature,  # Add custom parameters here
+        temperature=XTTS_MODEL.config.temperature, # Add custom parameters here
         length_penalty=XTTS_MODEL.config.length_penalty,
         repetition_penalty=XTTS_MODEL.config.repetition_penalty,
         top_k=XTTS_MODEL.config.top_k,
@@ -71,7 +106,9 @@ def run_tts(lang, tts_text, speaker_audio_file):
     return "Speech generated !", out_path, speaker_audio_file
 
 
-# define a logger to redirect
+
+
+# define a logger to redirect 
 class Logger:
     def __init__(self, filename="log.out"):
         self.log_file = filename
@@ -89,18 +126,19 @@ class Logger:
     def isatty(self):
         return False
 
-
 # redirect stdout and stderr to a file
 sys.stdout = Logger()
 sys.stderr = sys.stdout
 
 
 # logging.basicConfig(stream=sys.stdout, level=logging.INFO)
-
 logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s", handlers=[logging.StreamHandler(sys.stdout)]
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ]
 )
-
 
 def read_logs():
     sys.stdout.flush()
@@ -109,11 +147,12 @@ def read_logs():
 
 
 if __name__ == "__main__":
+
     parser = argparse.ArgumentParser(
         description="""XTTS fine-tuning demo\n\n"""
         """
         Example runs:
-        python3 TTS/demos/xtts_ft_demo/xtts_demo.py --port
+        python3 TTS/demos/xtts_ft_demo/xtts_demo.py --port 
         """,
         formatter_class=argparse.RawTextHelpFormatter,
     )
@@ -191,11 +230,12 @@ if __name__ == "__main__":
                     "zh",
                     "hu",
                     "ko",
-                    "ja",
-                    "hi",
+                    "ja"
                 ],
             )
-            progress_data = gr.Label(label="Progress:")
+            progress_data = gr.Label(
+                label="Progress:"
+            )
             logs = gr.Textbox(
                 label="Logs:",
                 interactive=False,
@@ -203,30 +243,20 @@ if __name__ == "__main__":
             demo.load(read_logs, None, logs, every=1)
 
             prompt_compute_btn = gr.Button(value="Step 1 - Create dataset")
-
+        
             def preprocess_dataset(audio_path, language, out_path, progress=gr.Progress(track_tqdm=True)):
                 clear_gpu_cache()
                 out_path = os.path.join(out_path, "dataset")
                 os.makedirs(out_path, exist_ok=True)
                 if audio_path is None:
-                    return (
-                        "You should provide one or multiple audio files! If you provided it, probably the upload of the files is not finished yet!",
-                        "",
-                        "",
-                    )
+                    return "You should provide one or multiple audio files! If you provided it, probably the upload of the files is not finished yet!", "", ""
                 else:
                     try:
-                        train_meta, eval_meta, audio_total_size = format_audio_list(
-                            audio_path, target_language=language, out_path=out_path, gradio_progress=progress
-                        )
+                        train_meta, eval_meta, audio_total_size = format_audio_list(audio_path, target_language=language, out_path=out_path, gradio_progress=progress)
                     except:
                         traceback.print_exc()
                         error = traceback.format_exc()
-                        return (
-                            f"The data processing was interrupted due an error !! Please check the console to verify the full error message! \n Error summary: {error}",
-                            "",
-                            "",
-                        )
+                        return f"The data processing was interrupted due an error !! Please check the console to verify the full error message! \n Error summary: {error}", "", ""
 
                 clear_gpu_cache()
 
@@ -246,7 +276,7 @@ if __name__ == "__main__":
             eval_csv = gr.Textbox(
                 label="Eval CSV:",
             )
-            num_epochs = gr.Slider(
+            num_epochs =  gr.Slider(
                 label="Number of epochs:",
                 minimum=1,
                 maximum=100,
@@ -274,7 +304,9 @@ if __name__ == "__main__":
                 step=1,
                 value=args.max_audio_length,
             )
-            progress_train = gr.Label(label="Progress:")
+            progress_train = gr.Label(
+                label="Progress:"
+            )
             logs_tts_train = gr.Textbox(
                 label="Logs:",
                 interactive=False,
@@ -282,41 +314,18 @@ if __name__ == "__main__":
             demo.load(read_logs, None, logs_tts_train, every=1)
             train_btn = gr.Button(value="Step 2 - Run the training")
 
-            def train_model(
-                language, train_csv, eval_csv, num_epochs, batch_size, grad_acumm, output_path, max_audio_length
-            ):
+            def train_model(language, train_csv, eval_csv, num_epochs, batch_size, grad_acumm, output_path, max_audio_length):
                 clear_gpu_cache()
                 if not train_csv or not eval_csv:
-                    return (
-                        "You need to run the data processing step or manually set `Train CSV` and `Eval CSV` fields !",
-                        "",
-                        "",
-                        "",
-                        "",
-                    )
+                    return "You need to run the data processing step or manually set `Train CSV` and `Eval CSV` fields !", "", "", "", ""
                 try:
                     # convert seconds to waveform frames
                     max_audio_length = int(max_audio_length * 22050)
-                    config_path, original_xtts_checkpoint, vocab_file, exp_path, speaker_wav = train_gpt(
-                        language,
-                        num_epochs,
-                        batch_size,
-                        grad_acumm,
-                        train_csv,
-                        eval_csv,
-                        output_path=output_path,
-                        max_audio_length=max_audio_length,
-                    )
+                    config_path, original_xtts_checkpoint, vocab_file, exp_path, speaker_wav = train_gpt(language, num_epochs, batch_size, grad_acumm, train_csv, eval_csv, output_path=output_path, max_audio_length=max_audio_length)
                 except:
                     traceback.print_exc()
                     error = traceback.format_exc()
-                    return (
-                        f"The training was interrupted due an error !! Please check the console to check the full error message! \n Error summary: {error}",
-                        "",
-                        "",
-                        "",
-                        "",
-                    )
+                    return f"The training was interrupted due an error !! Please check the console to check the full error message! \n Error summary: {error}", "", "", "", ""
 
                 # copy original files to avoid parameters changes issues
                 os.system(f"cp {config_path} {exp_path}")
@@ -343,7 +352,9 @@ if __name__ == "__main__":
                         label="XTTS vocab path:",
                         value="",
                     )
-                    progress_load = gr.Label(label="Progress:")
+                    progress_load = gr.Label(
+                        label="Progress:"
+                    )
                     load_btn = gr.Button(value="Step 3 - Load Fine-tuned XTTS model")
 
                 with gr.Column() as col2:
@@ -371,8 +382,7 @@ if __name__ == "__main__":
                             "hu",
                             "ko",
                             "ja",
-                            "hi",
-                        ],
+                        ]
                     )
                     tts_text = gr.Textbox(
                         label="Input Text.",
@@ -381,9 +391,14 @@ if __name__ == "__main__":
                     tts_btn = gr.Button(value="Step 4 - Inference")
 
                 with gr.Column() as col3:
-                    progress_gen = gr.Label(label="Progress:")
+                    progress_gen = gr.Label(
+                        label="Progress:"
+                    )
                     tts_output_audio = gr.Audio(label="Generated Audio.")
                     reference_audio = gr.Audio(label="Reference audio used.")
+                with gr.Column() as col4:
+                    export_btn = gr.Button(value="Export Fine-tuned Model")
+                    export_progress = gr.Label(label="Export Progress:")
 
             prompt_compute_btn.click(
                 fn=preprocess_dataset,
@@ -399,6 +414,7 @@ if __name__ == "__main__":
                 ],
             )
 
+
             train_btn.click(
                 fn=train_model,
                 inputs=[
@@ -413,10 +429,14 @@ if __name__ == "__main__":
                 ],
                 outputs=[progress_train, xtts_config, xtts_vocab, xtts_checkpoint, speaker_reference_audio],
             )
-
+            
             load_btn.click(
                 fn=load_model,
-                inputs=[xtts_checkpoint, xtts_config, xtts_vocab],
+                inputs=[
+                    xtts_checkpoint,
+                    xtts_config,
+                    xtts_vocab
+                ],
                 outputs=[progress_load],
             )
 
@@ -429,5 +449,15 @@ if __name__ == "__main__":
                 ],
                 outputs=[progress_gen, tts_output_audio, reference_audio],
             )
+            export_btn.click(
+                fn=export_model,
+                inputs=[out_path],
+                outputs=[export_progress],
+            )
 
-    demo.launch(share=True, debug=False, server_port=args.port, server_name="0.0.0.0")
+    demo.launch(
+        share=False,
+        debug=False,
+        server_port=args.port,
+        server_name="0.0.0.0"
+    )
