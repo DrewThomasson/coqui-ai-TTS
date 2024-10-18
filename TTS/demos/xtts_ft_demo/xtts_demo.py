@@ -14,6 +14,10 @@ from TTS.demos.xtts_ft_demo.utils.gpt_train import train_gpt
 from TTS.tts.configs.xtts_config import XttsConfig
 from TTS.tts.models.xtts import Xtts
 
+import glob
+import zipfile
+import shutil
+
 def export_model(output_path):
     try:
         output_folder = os.path.join(output_path, "Finished_model_files")
