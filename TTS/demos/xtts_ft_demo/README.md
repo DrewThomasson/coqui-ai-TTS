@@ -84,7 +84,7 @@ python xtts_demo.py
 ---
 
 ## ⚠️ Notes
-- The apple silicon install was tested on an **M1 Pro** Mac with **16GB RAM**.
+- The apple silicon install was tested on an **M1 Pro** Mac with **16GB RAM** and python 3.10.
   
 ---
 
