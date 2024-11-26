@@ -12,6 +12,16 @@ from spacy.lang.es import Spanish
 from spacy.lang.hi import Hindi
 from spacy.lang.ja import Japanese
 from spacy.lang.zh import Chinese
+from spacy.lang.de import German
+from spacy.lang.it import Italian
+from spacy.lang.pt import Portuguese
+from spacy.lang.pl import Polish
+from spacy.lang.tr import Turkish
+from spacy.lang.ru import Russian
+from spacy.lang.nl import Dutch
+from spacy.lang.cs import Czech
+from spacy.lang.hu import Hungarian
+from spacy.lang.ko import Korean
 from tokenizers import Tokenizer
 
 from TTS.tts.layers.xtts.zh_num2words import TextNorm as zh_num2words
@@ -31,6 +41,26 @@ def get_spacy_lang(lang):
         return Spanish()
     elif lang == "hi":
         return Hindi()
+    elif lang == "de":
+        return German()
+    elif lang == "it":
+        return Italian()
+    elif lang == "pt":
+        return Portuguese()
+    elif lang == "pl":
+        return Polish()
+    elif lang == "tr":
+        return Turkish()
+    elif lang == "ru":
+        return Russian()
+    elif lang == "nl":
+        return Dutch()
+    elif lang == "cs":
+        return Czech()
+    elif lang == "hu":
+        return Hungarian()
+    elif lang == "ko":
+        return Korean()
     else:
         # For most languages, English does the job
         return English()
