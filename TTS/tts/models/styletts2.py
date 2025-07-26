@@ -488,6 +488,132 @@ class Styletts2(BaseTTS):
         mel_pred = outputs["model_outputs"]
         
         return mel_pred
+
+    def inference(self, x, aux_input=None, **kwargs):
+        """
+        Inference method compatible with generic synthesis function.
+        
+        This method is called by the generic synthesis function in TTS.tts.utils.synthesis.
+        
+        Args:
+            x (torch.Tensor): Input token IDs with shape [1, seq_len]
+            aux_input (dict): Dictionary containing auxiliary inputs:
+                - x_lengths: Input lengths
+                - speaker_ids: Speaker IDs 
+                - d_vectors: Speaker embeddings
+                - style_mel: Style mel spectrogram
+                - language_ids: Language IDs
+        
+        Returns:
+            dict: Dictionary with model outputs
+        """
+        if aux_input is None:
+            aux_input = {}
+            
+        # Extract auxiliary inputs
+        x_lengths = aux_input.get("x_lengths")
+        speaker_ids = aux_input.get("speaker_ids") 
+        style_mel = aux_input.get("style_mel")
+        
+        # Handle input lengths
+        if x_lengths is None:
+            x_lengths = torch.LongTensor([x.size(1)]).to(x.device)
+        
+        # Extract reference style from style_mel if provided
+        ref_acoustic_style = None
+        ref_prosodic_style = None
+        
+        if style_mel is not None:
+            # Process style mel to extract style embeddings
+            with torch.no_grad():
+                # Ensure style_mel has correct dimensions for style encoder
+                if style_mel.dim() == 2:  # [mel_dim, time]
+                    style_mel = style_mel.unsqueeze(0).unsqueeze(0)  # [1, 1, mel_dim, time]
+                elif style_mel.dim() == 3:  # [1, mel_dim, time] 
+                    style_mel = style_mel.unsqueeze(1)  # [1, 1, mel_dim, time]
+                
+                ref_acoustic_style = self.style_encoder(style_mel)
+                ref_prosodic_style = self.predictor_encoder(style_mel)
+        
+        # Run inference
+        with torch.no_grad():
+            outputs = self._inference_with_style(
+                x, 
+                x_lengths,
+                ref_acoustic_style=ref_acoustic_style,
+                ref_prosodic_style=ref_prosodic_style,
+                speaker_ids=speaker_ids,
+                diffusion_steps=kwargs.get('diffusion_steps', 10)
+            )
+        
+        return outputs
+    
+    def inference_with_text(
+        self,
+        text: str,
+        speaker_id: int = None,
+        style_wav: str = None,
+        reference_wav: str = None,
+        alpha: float = 0.3,
+        diffusion_steps: int = 10,
+        **kwargs
+    ) -> torch.Tensor:
+        """
+        Text-based inference method for direct usage.
+        
+        Args:
+            text (str): Text to synthesize
+            speaker_id (int, optional): Speaker ID for multi-speaker models
+            style_wav (str, optional): Path to reference audio for style (legacy parameter)
+            reference_wav (str, optional): Path to reference audio for voice cloning
+            alpha (float): Style interpolation factor for voice cloning
+            diffusion_steps (int): Number of diffusion steps
+            
+        Returns:
+            torch.Tensor: Generated mel spectrogram
+        """
+        
+        # Support both style_wav and reference_wav for compatibility
+        ref_wav_path = reference_wav or style_wav
+        
+        # If reference audio is provided, use voice cloning
+        if ref_wav_path:
+            return self.clone_voice(
+                text=text,
+                reference_wav=ref_wav_path,
+                alpha=alpha,
+                diffusion_steps=diffusion_steps,
+                **kwargs
+            )
+        
+        # Standard inference without voice cloning
+        # Tokenize text
+        token_ids = self.tokenizer.text_to_ids(text)
+        token_ids = torch.LongTensor(token_ids).unsqueeze(0)
+        text_lengths = torch.LongTensor([len(token_ids[0])])
+        
+        if torch.cuda.is_available() and next(self.parameters()).is_cuda:
+            token_ids = token_ids.cuda()
+            text_lengths = text_lengths.cuda()
+        
+        speaker_ids = None
+        if speaker_id is not None:
+            speaker_ids = torch.LongTensor([speaker_id])
+            if torch.cuda.is_available() and next(self.parameters()).is_cuda:
+                speaker_ids = speaker_ids.cuda()
+        
+        # Run forward pass
+        with torch.no_grad():
+            outputs = self._inference_with_style(
+                token_ids,
+                text_lengths,
+                speaker_ids=speaker_ids,
+                diffusion_steps=diffusion_steps
+            )
+        
+        mel_pred = outputs["model_outputs"]
+        
+        return mel_pred
     
     def test_run(self, assets) -> Tuple[Dict, Dict]:
         """Test run for model validation."""
@@ -674,6 +800,76 @@ class Styletts2(BaseTTS):
             self.train()
             
         print(f"Model loaded from {checkpoint_path}")
+
+    def synthesize(self, text, config, speaker_wav=None, language=None, speaker_id=None, **kwargs):
+        """Synthesize speech with the given input text.
+        
+        This method provides the standard TTS API interface for StyleTTS2.
+        
+        Args:
+            text (str): Input text.
+            config (StyleTTS2Config): Config with inference parameters.
+            speaker_wav (str or list): Path to reference wav file(s) for voice cloning. 
+            language (str): Language (not used in StyleTTS2, kept for API compatibility).
+            speaker_id (str): Speaker ID (not used in StyleTTS2, kept for API compatibility).
+            **kwargs: Additional inference settings.
+            
+        Returns:
+            A dictionary with 'wav' as output waveform and other metadata.
+        """
+        # Set model to evaluation mode
+        self.eval()
+        
+        with torch.no_grad():
+            # Use voice cloning if speaker_wav is provided
+            if speaker_wav is not None:
+                # Handle both single wav and list of wavs
+                if isinstance(speaker_wav, str):
+                    reference_wav = speaker_wav
+                elif isinstance(speaker_wav, list) and len(speaker_wav) > 0:
+                    reference_wav = speaker_wav[0]  # Use first wav if multiple provided
+                else:
+                    reference_wav = None
+                    
+                if reference_wav:
+                    # Use the voice cloning capability
+                    mel_outputs = self.clone_voice(
+                        text=text,
+                        reference_wav=reference_wav,
+                        alpha=kwargs.get('alpha', 0.3),
+                        diffusion_steps=kwargs.get('diffusion_steps', 10)
+                    )
+                else:
+                    # Fallback to regular inference
+                    mel_outputs = self.inference_with_text(text, **kwargs)
+            else:
+                # Regular inference without voice cloning
+                mel_outputs = self.inference_with_text(text, **kwargs)
+            
+            # Convert mel spectrogram to waveform using vocoder (if available)
+            if hasattr(self, 'vocoder') and self.vocoder is not None:
+                # Use integrated vocoder
+                wav = self.vocoder(mel_outputs)
+                wav = wav.squeeze().cpu().numpy()
+            elif hasattr(self, 'ap') and self.ap is not None:
+                # Use audio processor for Griffin-Lim vocoding
+                mel_np = mel_outputs.squeeze().cpu().numpy()
+                wav = self.ap.inv_melspectrogram(mel_np.T)
+            else:
+                # Return mel spectrogram if no vocoder available 
+                # The synthesizer will handle vocoding
+                wav = mel_outputs.squeeze().cpu().numpy()
+            
+            # Create return dictionary matching TTS API expectations
+            return_dict = {
+                "wav": wav,
+                "model_outputs": mel_outputs,
+                "alignments": None,  # StyleTTS2 doesn't use explicit alignments
+                "text_inputs": text,
+                "deterministic_seed": kwargs.get('seed', None),
+            }
+            
+            return return_dict
 
     def on_init_end(self, trainer):
         """Called at the end of initialization."""

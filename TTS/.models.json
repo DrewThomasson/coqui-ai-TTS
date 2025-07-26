@@ -54,6 +54,15 @@
                     "commit": "e9a1953e",
                     "license": "MIT",
                     "contact": "https://www.suno.ai/"
+                },
+                "styletts2": {
+                    "description": "StyleTTS2: Towards Human-Level Text-to-Speech through Style Diffusion and Adversarial Training with Large Speech Language Models",
+                    "model_url": null,
+                    "config_url": null,
+                    "default_vocoder": null,
+                    "commit": "16c7f3a",
+                    "license": "MIT",
+                    "contact": "https://github.com/DrewThomasson/coqui-ai-TTS"
                 }
             }
         },
