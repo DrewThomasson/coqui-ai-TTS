@@ -56,11 +56,11 @@
                     "contact": "https://www.suno.ai/"
                 },
                 "styletts2": {
-                    "description": "StyleTTS2: Towards Human-Level Text-to-Speech through Style Diffusion and Adversarial Training with Large Speech Language Models",
+                    "description": "StyleTTS2: Towards Human-Level Text-to-Speech through Style Diffusion and Adversarial Training with Large Speech Language Models - Integrated version for Coqui TTS with voice cloning capabilities",
                     "model_url": null,
                     "config_url": null,
                     "default_vocoder": null,
-                    "commit": "16c7f3a",
+                    "commit": "77f3bfd",
                     "license": "MIT",
                     "contact": "https://github.com/DrewThomasson/coqui-ai-TTS"
                 }
