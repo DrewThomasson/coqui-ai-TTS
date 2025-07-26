@@ -32,6 +32,8 @@ def to_camel(text):
     text = text.replace("Tts", "TTS")
     text = text.replace("vc", "VC")
     text = text.replace("Knn", "KNN")
+    # Handle StyleTTS2 specifically
+    text = text.replace("Styletts2", "StyleTTS2")
     return text
 
 
