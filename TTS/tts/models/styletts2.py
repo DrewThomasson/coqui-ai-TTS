@@ -299,12 +299,83 @@ class Styletts2(BaseTTS):
         from TTS.tts.utils.speakers import SpeakerManager
         from TTS.tts.utils.languages import LanguageManager
 
-        ap = AudioProcessor.init_from_config(config)
-        tokenizer, new_config = TTSTokenizer.init_from_config(config)
-        speaker_manager = SpeakerManager.init_from_config(config, samples)
-        language_manager = LanguageManager.init_from_config(config)
+        # Handle both Coqui TTS config and original StyleTTS2 config
+        if hasattr(config, 'model') and config.model == "styletts2":
+            # Coqui TTS StyleTTS2Config format
+            ap = AudioProcessor.init_from_config(config)
+            tokenizer, new_config = TTSTokenizer.init_from_config(config)
+            speaker_manager = SpeakerManager.init_from_config(config, samples)
+            language_manager = LanguageManager.init_from_config(config)
+            
+            return Styletts2(new_config, ap, tokenizer, speaker_manager, language_manager)
+        else:
+            # Original StyleTTS2 YAML config format - convert to Coqui format
+            styletts2_config = Styletts2._convert_original_config(config)
+            
+            ap = AudioProcessor.init_from_config(styletts2_config)
+            tokenizer, new_config = TTSTokenizer.init_from_config(styletts2_config)
+            speaker_manager = SpeakerManager.init_from_config(styletts2_config, samples)
+            language_manager = LanguageManager.init_from_config(styletts2_config)
+            
+            return Styletts2(new_config, ap, tokenizer, speaker_manager, language_manager)
+
+    @staticmethod
+    def _convert_original_config(original_config):
+        """Convert original StyleTTS2 YAML config to Coqui TTS StyleTTS2Config format."""
+        from TTS.tts.configs.styletts2_config import StyleTTS2Config
         
-        return Styletts2(new_config, ap, tokenizer, speaker_manager, language_manager)
+        # Create base config
+        config = StyleTTS2Config()
+        
+        # Convert basic parameters if they exist
+        if hasattr(original_config, 'model_params'):
+            model_params = original_config.model_params
+            
+            # Map common parameters
+            if hasattr(model_params, 'hidden_dim'):
+                config.hidden_dim = model_params.hidden_dim
+            if hasattr(model_params, 'style_dim'):
+                config.style_dim = model_params.style_dim
+            if hasattr(model_params, 'n_layer'):
+                config.n_layer = model_params.n_layer
+            if hasattr(model_params, 'n_token'):
+                config.n_token = model_params.n_token
+                config.num_chars = model_params.n_token  # Required by BaseTTS
+                
+        # Set audio parameters based on what we know about StyleTTS2
+        config.sample_rate = 24000
+        config.hop_length = 300
+        config.win_length = 1200
+        config.n_fft = 2048
+        config.n_mels = 80
+        
+        # Set up audio processor config
+        config.audio = {
+            "sample_rate": 24000,
+            "hop_length": 300,
+            "win_length": 1200,
+            "n_fft": 2048,
+            "n_mels": 80,
+            "fmin": 0,
+            "fmax": 12000,
+            "output_sample_rate": 24000,
+            "do_trim_silence": True,
+            "trim_db": 30
+        }
+        
+        # Set text processing
+        config.text_cleaner = "phoneme_cleaners"
+        config.add_blank = True
+        config.phoneme_language = "en-us"
+        config.phoneme_backend = "espeak"
+        config.use_phonemes = True
+        config.phonemizer = "espeak"
+        
+        # Enable multi-speaker if LibriTTS model
+        if hasattr(original_config, 'multispeaker'):
+            config.multispeaker = original_config.multispeaker
+        
+        return config
 
     def forward(
         self, 
@@ -748,13 +819,128 @@ class Styletts2(BaseTTS):
 
     def load_checkpoint(
         self,
-        config: "Coqpit",
-        checkpoint_path: str,
+        config: "Coqpit", 
+        checkpoint_path: str = None,
+        checkpoint_dir: str = None,
         eval: bool = False,
         strict: bool = True,
         cache: bool = False,
     ) -> None:
         """Load a model checkpoint file and get ready for training or inference."""
+        
+        if checkpoint_dir:
+            # Loading from directory (HuggingFace download format)
+            self._load_from_directory(checkpoint_dir, config, eval, strict)
+        elif checkpoint_path:
+            # Loading from single checkpoint file
+            self._load_from_checkpoint(checkpoint_path, eval, strict)
+        else:
+            raise ValueError("Either checkpoint_path or checkpoint_dir must be provided")
+
+    def _load_from_directory(self, checkpoint_dir: str, config: "Coqpit", eval: bool, strict: bool):
+        """Load StyleTTS2 from directory containing config.yml and model.pth files."""
+        import glob
+        import os
+        import yaml
+        import json
+        
+        logger.info(f"Loading StyleTTS2 from directory: {checkpoint_dir}")
+        
+        # Find model file (could be .pth or .pt)  
+        model_files = glob.glob(os.path.join(checkpoint_dir, "*.pth")) + \
+                     glob.glob(os.path.join(checkpoint_dir, "*.pt"))
+        
+        if not model_files:
+            raise FileNotFoundError(f"No model files (.pth/.pt) found in {checkpoint_dir}")
+        
+        # Check if we have a YAML config that needs to be converted
+        yaml_config_path = os.path.join(checkpoint_dir, "config.yml")
+        json_config_path = os.path.join(checkpoint_dir, "config.json")
+        
+        if os.path.exists(yaml_config_path) and not os.path.exists(json_config_path):
+            logger.info("Converting StyleTTS2 YAML config to JSON format")
+            self._convert_yaml_to_json_config(yaml_config_path, json_config_path)
+        
+        # Use the first model file found
+        model_file = model_files[0]
+        logger.info(f"Loading model from: {model_file}")
+        
+        # Load the model
+        self._load_from_checkpoint(model_file, eval, strict)
+
+    def _convert_yaml_to_json_config(self, yaml_path: str, json_path: str):
+        """Convert original StyleTTS2 YAML config to Coqui TTS JSON format."""
+        import yaml
+        import json
+        
+        try:
+            # Load original YAML config
+            with open(yaml_path, 'r') as f:
+                yaml_config = yaml.safe_load(f)
+            
+            # Convert to our config format
+            from TTS.tts.configs.styletts2_config import StyleTTS2Config
+            config = StyleTTS2Config()
+            
+            # Extract parameters from original config if available
+            if 'model_params' in yaml_config:
+                model_params = yaml_config['model_params']
+                
+                # Map known parameters
+                config.hidden_dim = model_params.get('hidden_dim', config.hidden_dim)
+                config.style_dim = model_params.get('style_dim', config.style_dim) 
+                config.n_layer = model_params.get('n_layer', config.n_layer)
+                config.n_token = model_params.get('n_token', config.n_token)
+                config.num_chars = model_params.get('n_token', config.num_chars)
+                config.max_dur = model_params.get('max_dur', config.max_dur)
+                config.dropout = model_params.get('dropout', config.dropout)
+            
+            # Set StyleTTS2 specific parameters
+            config.sample_rate = 24000
+            config.hop_length = 300
+            config.win_length = 1200
+            config.n_fft = 2048
+            config.n_mels = 80
+            
+            # Audio config
+            config.audio = {
+                "sample_rate": 24000,
+                "hop_length": 300, 
+                "win_length": 1200,
+                "n_fft": 2048,
+                "n_mels": 80,
+                "fmin": 0,
+                "fmax": 12000,
+                "output_sample_rate": 24000,
+                "do_trim_silence": True,
+                "trim_db": 30
+            }
+            
+            # Text processing config
+            config.text_cleaner = "phoneme_cleaners"
+            config.add_blank = True
+            config.phoneme_language = "en-us"
+            config.phoneme_backend = "espeak"
+            config.use_phonemes = True
+            config.phonemizer = "espeak"
+            
+            # Save as JSON
+            with open(json_path, 'w') as f:
+                json.dump(config.to_dict(), f, indent=2)
+                
+            logger.info(f"Converted YAML config to JSON: {json_path}")
+            
+        except Exception as e:
+            logger.error(f"Failed to convert YAML config to JSON: {e}")
+            # Create a minimal config file as fallback
+            from TTS.tts.configs.styletts2_config import StyleTTS2Config
+            config = StyleTTS2Config()
+            with open(json_path, 'w') as f:
+                json.dump(config.to_dict(), f, indent=2)
+            logger.info("Created fallback JSON config")
+
+    def _load_from_checkpoint(self, checkpoint_path: str, eval: bool, strict: bool):
+        """Load StyleTTS2 from checkpoint file."""
         
         state = torch.load(checkpoint_path, map_location='cpu')
         
@@ -764,13 +950,17 @@ class Styletts2(BaseTTS):
         elif 'state_dict' in state:
             model_state = state['state_dict']
         elif 'net' in state:
-            # StyleTTS2 format
+            # StyleTTS2 format - this contains sub-modules
             model_state = state['net']
+            logger.info("Loading StyleTTS2 format checkpoint with 'net' key")
         else:
             model_state = state
         
         # Load model weights
-        if isinstance(model_state, dict):
+        if isinstance(model_state, dict) and 'net' in state:
+            # Original StyleTTS2 format with separate modules
+            self._load_styletts2_format(model_state, strict=strict)
+        elif isinstance(model_state, dict):
             # If model_state contains sub-modules, load them separately
             missing_keys = []
             unexpected_keys = []
@@ -779,16 +969,16 @@ class Styletts2(BaseTTS):
                 if name in model_state:
                     try:
                         module.load_state_dict(model_state[name], strict=strict)
-                        print(f"Loaded {name}")
+                        logger.info(f"Loaded {name}")
                     except Exception as e:
-                        print(f"Failed to load {name}: {e}")
+                        logger.warning(f"Failed to load {name}: {e}")
                         if strict:
                             raise
                 else:
                     missing_keys.append(name)
             
             if missing_keys and strict:
-                print(f"Warning: Missing keys in checkpoint: {missing_keys}")
+                logger.warning(f"Warning: Missing keys in checkpoint: {missing_keys}")
                 
         else:
             # Standard pytorch checkpoint
@@ -799,7 +989,54 @@ class Styletts2(BaseTTS):
         else:
             self.train()
             
-        print(f"Model loaded from {checkpoint_path}")
+        logger.info(f"Model loaded from {checkpoint_path}")
+
+    def _load_styletts2_format(self, model_state, strict=True):
+        """Load weights from original StyleTTS2 checkpoint format."""
+        logger.info("Loading original StyleTTS2 checkpoint format")
+        
+        # Map original StyleTTS2 module names to our implementation
+        module_mapping = {
+            'text_encoder': 'text_encoder',
+            'style_encoder': 'style_encoder', 
+            'predictor': 'predictor_encoder',
+            'diffusion': 'diffusion',
+            'decoder': 'decoder',
+            'duration_predictor': 'duration_predictor'
+        }
+        
+        loaded_modules = []
+        missing_modules = []
+        
+        for orig_name, our_name in module_mapping.items():
+            if orig_name in model_state and hasattr(self, our_name):
+                try:
+                    our_module = getattr(self, our_name)
+                    orig_weights = model_state[orig_name]
+                    
+                    # Try to load weights with shape matching
+                    our_module.load_state_dict(orig_weights, strict=False)
+                    loaded_modules.append(f"{orig_name} -> {our_name}")
+                    
+                except Exception as e:
+                    logger.warning(f"Failed to load {orig_name}: {e}")
+                    missing_modules.append(orig_name)
+                    if strict:
+                        raise
+            else:
+                missing_modules.append(orig_name)
+        
+        logger.info(f"Successfully loaded modules: {loaded_modules}")
+        if missing_modules:
+            logger.warning(f"Could not load modules: {missing_modules}")
+            
+        # Handle multispeaker embeddings if present
+        if 'multispeaker' in model_state and hasattr(self, 'speaker_embedding'):
+            try:
+                self.speaker_embedding.load_state_dict(model_state['multispeaker'], strict=False)
+                logger.info("Loaded multispeaker embeddings")
+            except Exception as e:
+                logger.warning(f"Failed to load multispeaker embeddings: {e}")
 
     def synthesize(self, text, config, speaker_wav=None, language=None, speaker_id=None, **kwargs):
         """Synthesize speech with the given input text.
