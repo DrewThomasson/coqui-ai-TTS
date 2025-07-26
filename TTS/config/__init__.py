@@ -54,6 +54,104 @@ def register_config(model_name: str) -> Coqpit:
     return config_class
 
 
+def _convert_styletts2_config(config_dict: dict) -> dict:
+    """Convert original StyleTTS2 config format to Coqui TTS format.
+    
+    Args:
+        config_dict (dict): Original StyleTTS2 config dictionary.
+        
+    Returns:
+        dict: Converted config dictionary compatible with Coqui TTS.
+    """
+    # Create a new config dict with Coqui TTS structure
+    converted_config = {
+        "model": "styletts2",
+        "run_name": config_dict.get("log_dir", "styletts2_run"),
+        "run_description": "StyleTTS2 model",
+    }
+    
+    # Audio settings
+    converted_config["audio"] = {
+        "sample_rate": config_dict.get("sr", 24000),
+        "hop_length": config_dict.get("hop_length", 300),
+        "win_length": config_dict.get("win_length", 1200),
+        "n_fft": config_dict.get("n_fft", 2048),
+        "n_mels": config_dict.get("n_mels", 80),
+        "mel_fmin": config_dict.get("mel_fmin", 0),
+        "mel_fmax": config_dict.get("mel_fmax", 12000)
+    }
+    
+    # Model arguments
+    converted_config["model_args"] = {
+        "hidden_dim": config_dict.get("hidden_dim", 512),
+        "style_dim": config_dict.get("style_dim", 64),
+        "n_layer": config_dict.get("n_layer", 5),
+        "n_token": config_dict.get("n_token", 178),
+        "num_chars": config_dict.get("n_token", 178),
+        "max_dur": config_dict.get("max_dur", 50),
+        "dropout": config_dict.get("dropout", 0.2),
+        "dim_in": config_dict.get("dim_in", 64),
+        "n_mels": config_dict.get("n_mels", 80),
+        "multispeaker": config_dict.get("multispeaker", False),
+    }
+    
+    # Training parameters
+    converted_config.update({
+        "epochs": config_dict.get("epochs", 200),
+        "batch_size": config_dict.get("batch_size", 16),
+        "eval_batch_size": config_dict.get("batch_size", 16),
+        "lr": config_dict.get("lr", 0.0002),
+        "num_loader_workers": config_dict.get("num_workers", 4),
+        "num_eval_loader_workers": config_dict.get("num_workers", 4),
+    })
+    
+    # Text processing
+    converted_config.update({
+        "text_cleaner": "phoneme_cleaners",
+        "add_blank": True,
+        "min_seq_len": 1,
+        "max_seq_len": float("inf"),
+    })
+    
+    # Voice cloning and inference settings
+    converted_config["voice_cloning"] = {
+        "reference_audio_max_length": 10.0,
+        "style_interpolation_alpha": 0.3,
+        "diffusion_steps": 10,
+        "enable_preprocessing": True,
+        "normalize_reference": True,
+        "extract_prosody": True
+    }
+    
+    converted_config["inference"] = {
+        "diffusion_steps": 10,
+        "embedding_scale": 1.0,
+        "alpha": 0.3
+    }
+    
+    return converted_config
+
+
+def _is_styletts2_config(config_dict: dict) -> bool:
+    """Check if config dictionary is from original StyleTTS2 format.
+    
+    Args:
+        config_dict (dict): Config dictionary to check.
+        
+    Returns:
+        bool: True if this looks like a StyleTTS2 config.
+    """
+    # StyleTTS2 configs have these characteristic fields
+    styletts2_indicators = [
+        "log_dir", "save_freq", "device", "epochs", "batch_size", 
+        "lr", "n_token", "ASR_config", "ASR_path", "F0_path"
+    ]
+    
+    # Check if at least 3 StyleTTS2-specific fields are present
+    indicator_count = sum(1 for indicator in styletts2_indicators if indicator in config_dict)
+    return indicator_count >= 3
+
+
 def _process_model_name(config_dict: dict) -> str:
     """Format the model name as expected. It is a band-aid for the old `vocoder` model names.
 
@@ -63,7 +161,18 @@ def _process_model_name(config_dict: dict) -> str:
     Returns:
         str: Formatted modelname.
     """
-    model_name = config_dict["model"] if "model" in config_dict else config_dict["generator_model"]
+    # Handle StyleTTS2 configs that don't have explicit model field
+    if "model" in config_dict:
+        model_name = config_dict["model"]
+    elif "generator_model" in config_dict:
+        model_name = config_dict["generator_model"]
+    else:
+        # Check if this looks like a StyleTTS2 config
+        if _is_styletts2_config(config_dict):
+            model_name = "styletts2"
+        else:
+            raise KeyError("Config file must contain either 'model' or 'generator_model' field, or be a recognizable StyleTTS2 config")
+    
     model_name = model_name.replace("_generator", "").replace("_discriminator", "")
     return model_name
 
@@ -97,6 +206,11 @@ def load_config(config_path: str | os.PathLike[Any]) -> Coqpit:
     else:
         raise TypeError(f" [!] Unknown config file type {ext}")
     config_dict.update(data)
+    
+    # Convert StyleTTS2 configs to Coqui TTS format if needed
+    if _is_styletts2_config(config_dict):
+        config_dict = _convert_styletts2_config(config_dict)
+    
     model_name = _process_model_name(config_dict)
     config_class = register_config(model_name.lower())
     config = config_class()
