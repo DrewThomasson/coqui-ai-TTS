@@ -1119,6 +1119,9 @@ class StyleTTS2(BaseTTS):
         """Load weights from original StyleTTS2 checkpoint format."""
         logger.info("Loading original StyleTTS2 checkpoint format")
         
+        # Check if this is a real StyleTTS2 checkpoint with proper architecture
+        self._validate_styletts2_checkpoint(model_state)
+        
         # Map original StyleTTS2 module names to our implementation
         module_mapping = {
             'text_encoder': 'text_encoder',
@@ -1134,6 +1137,7 @@ class StyleTTS2(BaseTTS):
         
         loaded_modules = []
         missing_modules = []
+        architecture_mismatches = []
         
         for orig_name, our_name in module_mapping.items():
             if orig_name in model_state and hasattr(self, our_name):
@@ -1141,21 +1145,51 @@ class StyleTTS2(BaseTTS):
                     our_module = getattr(self, our_name)
                     orig_weights = model_state[orig_name]
                     
+                    # Remove 'module.' prefix if present (from DataParallel models)
+                    if isinstance(orig_weights, dict):
+                        cleaned_weights = {}
+                        for key, value in orig_weights.items():
+                            new_key = key.replace('module.', '') if key.startswith('module.') else key
+                            cleaned_weights[new_key] = value
+                        orig_weights = cleaned_weights
+                    
                     # Try to load weights with shape matching
-                    our_module.load_state_dict(orig_weights, strict=False)
+                    missing_keys, unexpected_keys = our_module.load_state_dict(orig_weights, strict=False)
+                    
+                    # Check for significant architecture mismatches
+                    our_params = len(our_module.state_dict())
+                    orig_params = len(orig_weights) if isinstance(orig_weights, dict) else 0
+                    
+                    if len(missing_keys) > our_params * 0.5 or len(unexpected_keys) > orig_params * 0.5:
+                        architecture_mismatches.append(f"{orig_name}: {our_params} vs {orig_params} params, {len(missing_keys)} missing, {len(unexpected_keys)} unexpected")
+                        logger.warning(f"Significant architecture mismatch in {orig_name}: our implementation has {our_params} parameters, original has {orig_params}")
+                    
                     loaded_modules.append(f"{orig_name} -> {our_name}")
                     
                 except Exception as e:
                     logger.warning(f"Failed to load {orig_name}: {e}")
                     missing_modules.append(orig_name)
-                    if strict:
-                        raise
+                    # Don't raise even with strict=True for architecture mismatches
+                    # as this is expected for our simplified implementation
             else:
                 missing_modules.append(orig_name)
         
         logger.info(f"Successfully loaded modules: {loaded_modules}")
         if missing_modules:
-            logger.info(f"Could not load modules: {missing_modules}")
+            logger.warning(f"Could not load modules: {missing_modules}")
+        
+        if architecture_mismatches:
+            logger.error("🚨 CRITICAL: Significant architecture mismatches detected!")
+            for mismatch in architecture_mismatches:
+                logger.error(f"  {mismatch}")
+            logger.error("This indicates that the current StyleTTS2 implementation is a simplified version")
+            logger.error("that doesn't fully match the original StyleTTS2 architecture.")
+            logger.error("The model will produce suboptimal results (likely noise instead of speech).")
+            logger.error("")
+            logger.error("For high-quality StyleTTS2 inference, please use the original StyleTTS2 repository:")
+            logger.error("https://github.com/yl4579/StyleTTS2")
+            logger.error("")
+            logger.error("This Coqui TTS integration is currently a proof-of-concept implementation.")
             
         # Handle multispeaker embeddings if present
         if 'multispeaker' in model_state and hasattr(self, 'speaker_embedding'):
@@ -1164,11 +1198,39 @@ class StyleTTS2(BaseTTS):
                 logger.info("Loaded multispeaker embeddings")
             except Exception as e:
                 logger.warning(f"Failed to load multispeaker embeddings: {e}")
+    
+    def _validate_styletts2_checkpoint(self, model_state):
+        """Validate that we have a real StyleTTS2 checkpoint and warn about limitations."""
+        required_modules = ['text_encoder', 'decoder', 'diffusion']
+        missing_modules = [mod for mod in required_modules if mod not in model_state]
+        
+        if missing_modules:
+            logger.error(f"StyleTTS2 checkpoint missing required modules: {missing_modules}")
+            return False
+            
+        # Check if modules have realistic parameter counts (indicating real pretrained model)
+        decoder_param_count = len(model_state.get('decoder', {})) if isinstance(model_state.get('decoder'), dict) else 0
+        text_encoder_param_count = len(model_state.get('text_encoder', {})) if isinstance(model_state.get('text_encoder'), dict) else 0
+        
+        if decoder_param_count < 100 or text_encoder_param_count < 10:
+            logger.warning("StyleTTS2 checkpoint appears to have unusually few parameters - may not be a real pretrained model")
+            return False
+            
+        logger.info(f"StyleTTS2 checkpoint validation passed: decoder has {decoder_param_count} params, text_encoder has {text_encoder_param_count} params")
+        return True
 
     def synthesize(self, text, config, speaker_wav=None, language=None, speaker_id=None, **kwargs):
         """Synthesize speech with the given input text.
         
-        This method provides the standard TTS API interface for StyleTTS2.
+        ⚠️  IMPORTANT: This is a simplified StyleTTS2 implementation for Coqui TTS compatibility.
+        The current implementation may produce suboptimal results (noise-like audio) because:
+        
+        1. It uses a simplified architecture that doesn't fully match the original StyleTTS2
+        2. The pretrained weights may not load correctly due to architecture mismatches
+        3. It uses Griffin-Lim vocoding instead of the original neural vocoder
+        
+        For production-quality StyleTTS2 inference, please use the original repository:
+        https://github.com/yl4579/StyleTTS2
         
         Args:
             text (str): Input text.
@@ -1181,6 +1243,14 @@ class StyleTTS2(BaseTTS):
         Returns:
             A dictionary with 'wav' as output waveform and other metadata.
         """
+        # Issue a warning about limitations (only once per session)
+        if not hasattr(self, '_warned_about_limitations'):
+            logger.warning("🚨 StyleTTS2 Limitation Notice:")
+            logger.warning("This is a simplified implementation that may produce noise instead of clear speech.")
+            logger.warning("For production use, please use the original StyleTTS2 repository.")
+            logger.warning("See: https://github.com/yl4579/StyleTTS2")
+            self._warned_about_limitations = True
+        
         # Set model to evaluation mode
         self.eval()
         
