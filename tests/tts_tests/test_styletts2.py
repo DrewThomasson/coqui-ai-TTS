@@ -2,7 +2,7 @@ import unittest
 import torch
 
 from TTS.tts.configs.styletts2_config import StyleTTS2Config
-from TTS.tts.models.styletts2 import Styletts2
+from TTS.tts.models.styletts2 import StyleTTS2
 from TTS.tts.models import setup_model
 
 
@@ -25,8 +25,8 @@ class TestStyleTTS2(unittest.TestCase):
 
     def test_model_initialization(self):
         """Test StyleTTS2 model can be initialized."""
-        model = Styletts2.init_from_config(self.config, [])
-        self.assertIsInstance(model, Styletts2)
+        model = StyleTTS2.init_from_config(self.config, [])
+        self.assertIsInstance(model, StyleTTS2)
         
         # Check model has expected components
         self.assertTrue(hasattr(model, 'text_encoder'))
@@ -37,11 +37,11 @@ class TestStyleTTS2(unittest.TestCase):
     def test_model_registry(self):
         """Test StyleTTS2 can be loaded through model registry."""
         model = setup_model(self.config, [])
-        self.assertIsInstance(model, Styletts2)
+        self.assertIsInstance(model, StyleTTS2)
 
     def test_forward_pass(self):
         """Test StyleTTS2 forward pass."""
-        model = Styletts2.init_from_config(self.config, [])
+        model = StyleTTS2.init_from_config(self.config, [])
         model.eval()
 
         # Create dummy input
@@ -71,7 +71,7 @@ class TestStyleTTS2(unittest.TestCase):
 
     def test_inference(self):
         """Test StyleTTS2 inference."""
-        model = Styletts2.init_from_config(self.config, [])
+        model = StyleTTS2.init_from_config(self.config, [])
         model.eval()
 
         # Test inference
@@ -85,7 +85,7 @@ class TestStyleTTS2(unittest.TestCase):
 
     def test_loss_computation(self):
         """Test StyleTTS2 loss computation."""
-        model = Styletts2.init_from_config(self.config, [])
+        model = StyleTTS2.init_from_config(self.config, [])
 
         # Create dummy data
         batch_size = 2
@@ -121,12 +121,12 @@ class TestStyleTTS2(unittest.TestCase):
         config.multispeaker = True
         
         # This should work without error
-        model = Styletts2.init_from_config(config, [])
+        model = StyleTTS2.init_from_config(config, [])
         self.assertTrue(model.multispeaker)
 
     def test_model_parameters(self):
         """Test StyleTTS2 has reasonable number of parameters."""
-        model = Styletts2.init_from_config(self.config, [])
+        model = StyleTTS2.init_from_config(self.config, [])
         
         total_params = sum(p.numel() for p in model.parameters())
         trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
@@ -138,7 +138,7 @@ class TestStyleTTS2(unittest.TestCase):
 
     def test_voice_cloning_methods(self):
         """Test voice cloning method interfaces."""
-        model = Styletts2.init_from_config(self.config, [])
+        model = StyleTTS2.init_from_config(self.config, [])
         
         # Check that voice cloning methods exist
         self.assertTrue(hasattr(model, 'clone_voice'))
@@ -184,7 +184,7 @@ class TestStyleTTS2(unittest.TestCase):
 
     def test_enhanced_inference_interface(self):
         """Test enhanced inference method with voice cloning support."""
-        model = Styletts2.init_from_config(self.config, [])
+        model = StyleTTS2.init_from_config(self.config, [])
         model.eval()
         
         # Test standard inference (should work as before)
@@ -208,7 +208,7 @@ class TestStyleTTS2(unittest.TestCase):
 
     def test_style_extraction_interface(self):
         """Test style extraction method interfaces."""
-        model = Styletts2.init_from_config(self.config, [])
+        model = StyleTTS2.init_from_config(self.config, [])
         
         # Create dummy audio tensor
         sample_rate = self.config.sample_rate
@@ -249,7 +249,7 @@ class TestStyleTTS2(unittest.TestCase):
         try:
             from TTS.tts.utils.styletts2_voice_cloning import StyleTTS2VoiceCloningUtils
             
-            model = Styletts2.init_from_config(self.config, [])
+            model = StyleTTS2.init_from_config(self.config, [])
             utils = StyleTTS2VoiceCloningUtils(model, self.config)
             
             # Check utility methods exist
@@ -264,7 +264,7 @@ class TestStyleTTS2(unittest.TestCase):
 
     def test_forward_pass_with_style_outputs(self):
         """Test that forward pass includes style outputs for voice cloning."""
-        model = Styletts2.init_from_config(self.config, [])
+        model = StyleTTS2.init_from_config(self.config, [])
         
         batch_size = 2
         seq_len = 10

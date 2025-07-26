@@ -36,7 +36,23 @@ class StyleTTS2(BaseTTS):
         speaker_manager=None,
         language_manager=None,
     ):
+        """Initialize StyleTTS2 model.
+        
+        Args:
+            config: Model configuration
+            ap: Audio processor 
+            tokenizer: Text tokenizer
+            speaker_manager: Speaker manager
+            language_manager: Language manager
+        """
         super().__init__(config, ap, tokenizer, speaker_manager, language_manager)
+        
+        # Validate config has required attributes
+        required_attrs = ['hidden_dim', 'style_dim', 'n_layer', 'n_token', 'max_dur', 'dropout']
+        for attr in required_attrs:
+            if not hasattr(config, attr):
+                logger.warning(f"Config missing required attribute: {attr}. Using default value.")
+                setattr(config, attr, getattr(self._get_default_config(), attr))
         
         # Store config params
         self.hidden_dim = config.hidden_dim
@@ -45,7 +61,7 @@ class StyleTTS2(BaseTTS):
         self.n_token = config.n_token
         self.max_dur = config.max_dur
         self.dropout = config.dropout
-        self.multispeaker = config.multispeaker
+        self.multispeaker = getattr(config, 'multispeaker', False)
         
         # Initialize model components
         self._build_model()
@@ -54,6 +70,11 @@ class StyleTTS2(BaseTTS):
         self.mel_loss = nn.L1Loss()  # Simple L1 loss for mel spectrograms
         self.l1_loss = nn.L1Loss()
         self.mse_loss = MSELoss()
+    
+    def _get_default_config(self):
+        """Get default config values for missing attributes."""
+        from TTS.tts.configs.styletts2_config import StyleTTS2Config
+        return StyleTTS2Config()
         
     def _build_model(self):
         """Build StyleTTS2 model components."""
@@ -294,54 +315,124 @@ class StyleTTS2(BaseTTS):
         config: "Coqpit", samples: Union[List[List], List[Dict]] = None, verbose: bool = True
     ):
         """Initialize StyleTTS2 from config"""
-        from TTS.utils.audio import AudioProcessor
-        from TTS.tts.utils.text.tokenizer import TTSTokenizer
-        from TTS.tts.utils.speakers import SpeakerManager
-        from TTS.tts.utils.languages import LanguageManager
+        logger.info("Initializing StyleTTS2 from config")
+        
+        try:
+            from TTS.utils.audio import AudioProcessor
+            from TTS.tts.utils.text.tokenizer import TTSTokenizer
+            from TTS.tts.utils.speakers import SpeakerManager
+            from TTS.tts.utils.languages import LanguageManager
 
-        # Handle both Coqui TTS config and original StyleTTS2 config
-        if hasattr(config, 'model') and config.model == "styletts2":
-            # Coqui TTS StyleTTS2Config format
-            ap = AudioProcessor.init_from_config(config)
-            tokenizer, new_config = TTSTokenizer.init_from_config(config)
-            speaker_manager = SpeakerManager.init_from_config(config, samples)
-            language_manager = LanguageManager.init_from_config(config)
+            # Handle both Coqui TTS config and original StyleTTS2 config
+            if hasattr(config, 'model') and config.model == "styletts2":
+                logger.info("Using Coqui TTS StyleTTS2Config format")
+                working_config = config
+            else:
+                logger.info("Converting original StyleTTS2 config to Coqui TTS format")
+                working_config = StyleTTS2._convert_original_config(config)
             
-            return StyleTTS2(new_config, ap, tokenizer, speaker_manager, language_manager)
-        else:
-            # Original StyleTTS2 YAML config format - convert to Coqui format
-            styletts2_config = StyleTTS2._convert_original_config(config)
+            # Initialize components with error handling
+            try:
+                ap = AudioProcessor.init_from_config(working_config)
+                logger.info("AudioProcessor initialized successfully")
+            except Exception as e:
+                logger.warning(f"Failed to initialize AudioProcessor: {e}")
+                ap = None
             
-            ap = AudioProcessor.init_from_config(styletts2_config)
-            tokenizer, new_config = TTSTokenizer.init_from_config(styletts2_config)
-            speaker_manager = SpeakerManager.init_from_config(styletts2_config, samples)
-            language_manager = LanguageManager.init_from_config(styletts2_config)
+            try:
+                tokenizer, new_config = TTSTokenizer.init_from_config(working_config)
+                logger.info("TTSTokenizer initialized successfully")
+            except Exception as e:
+                logger.error(f"Failed to initialize TTSTokenizer: {e}")
+                # TTSTokenizer is critical, use fallback
+                new_config = working_config
+                tokenizer = None
             
-            return StyleTTS2(new_config, ap, tokenizer, speaker_manager, language_manager)
+            try:
+                speaker_manager = SpeakerManager.init_from_config(working_config, samples)
+                logger.info("SpeakerManager initialized successfully")
+            except Exception as e:
+                logger.warning(f"Failed to initialize SpeakerManager: {e}")
+                speaker_manager = None
+            
+            try:
+                language_manager = LanguageManager.init_from_config(working_config)
+                logger.info("LanguageManager initialized successfully")
+            except Exception as e:
+                logger.warning(f"Failed to initialize LanguageManager: {e}")
+                language_manager = None
+            
+            # Create StyleTTS2 instance
+            model = StyleTTS2(new_config, ap, tokenizer, speaker_manager, language_manager)
+            logger.info("StyleTTS2 model created successfully")
+            return model
+            
+        except Exception as e:
+            logger.error(f"Error in StyleTTS2.init_from_config: {e}")
+            logger.info("Attempting fallback initialization")
+            
+            # Fallback to basic initialization with default config
+            try:
+                from TTS.tts.configs.styletts2_config import StyleTTS2Config
+                fallback_config = StyleTTS2Config()
+                logger.info("Using fallback StyleTTS2Config")
+                
+                # Try to initialize with minimal components
+                try:
+                    from TTS.utils.audio import AudioProcessor
+                    ap = AudioProcessor.init_from_config(fallback_config)
+                except:
+                    ap = None
+                    
+                try:
+                    from TTS.tts.utils.text.tokenizer import TTSTokenizer
+                    tokenizer, new_config = TTSTokenizer.init_from_config(fallback_config)
+                except:
+                    tokenizer = None
+                    new_config = fallback_config
+                
+                # Create with minimal initialization
+                model = StyleTTS2(new_config, ap, tokenizer, None, None)
+                logger.info("StyleTTS2 model created with fallback configuration")
+                return model
+                
+            except Exception as fallback_error:
+                logger.error(f"Fallback initialization also failed: {fallback_error}")
+                raise RuntimeError(f"Failed to initialize StyleTTS2. Original error: {e}, Fallback error: {fallback_error}")
 
     @staticmethod
     def _convert_original_config(original_config):
         """Convert original StyleTTS2 YAML config to Coqui TTS StyleTTS2Config format."""
         from TTS.tts.configs.styletts2_config import StyleTTS2Config
         
+        logger.info("Converting original StyleTTS2 config to Coqui TTS format")
+        
         # Create base config
         config = StyleTTS2Config()
         
-        # Convert basic parameters if they exist
-        if hasattr(original_config, 'model_params'):
-            model_params = original_config.model_params
-            
-            # Map common parameters
-            if hasattr(model_params, 'hidden_dim'):
-                config.hidden_dim = model_params.hidden_dim
-            if hasattr(model_params, 'style_dim'):
-                config.style_dim = model_params.style_dim
-            if hasattr(model_params, 'n_layer'):
-                config.n_layer = model_params.n_layer
-            if hasattr(model_params, 'n_token'):
-                config.n_token = model_params.n_token
-                config.num_chars = model_params.n_token  # Required by BaseTTS
+        try:
+            # Convert basic parameters if they exist
+            if hasattr(original_config, 'model_params'):
+                model_params = original_config.model_params
                 
+                # Map common parameters
+                if hasattr(model_params, 'hidden_dim'):
+                    config.hidden_dim = model_params.hidden_dim
+                if hasattr(model_params, 'style_dim'):
+                    config.style_dim = model_params.style_dim
+                if hasattr(model_params, 'n_layer'):
+                    config.n_layer = model_params.n_layer
+                if hasattr(model_params, 'n_token'):
+                    config.n_token = model_params.n_token
+                    config.num_chars = model_params.n_token  # Required by BaseTTS
+            
+            # Enable multi-speaker if LibriTTS model
+            if hasattr(original_config, 'multispeaker'):
+                config.multispeaker = original_config.multispeaker
+            
+        except Exception as e:
+            logger.warning(f"Error converting original config parameters: {e}. Using defaults.")
+        
         # Set audio parameters based on what we know about StyleTTS2
         config.sample_rate = 24000
         config.hop_length = 300
@@ -371,9 +462,8 @@ class StyleTTS2(BaseTTS):
         config.use_phonemes = True
         config.phonemizer = "espeak"
         
-        # Enable multi-speaker if LibriTTS model
-        if hasattr(original_config, 'multispeaker'):
-            config.multispeaker = original_config.multispeaker
+        # Ensure the model field is set
+        config.model = "styletts2"
         
         return config
 
@@ -493,7 +583,7 @@ class StyleTTS2(BaseTTS):
         
         return total_loss, loss_dict
 
-    def inference(
+    def inference_with_text(
         self,
         text: str,
         speaker_id: int = None,
@@ -618,73 +708,6 @@ class StyleTTS2(BaseTTS):
             )
         
         return outputs
-    
-    def inference_with_text(
-        self,
-        text: str,
-        speaker_id: int = None,
-        style_wav: str = None,
-        reference_wav: str = None,
-        alpha: float = 0.3,
-        diffusion_steps: int = 10,
-        **kwargs
-    ) -> torch.Tensor:
-        """
-        Text-based inference method for direct usage.
-        
-        Args:
-            text (str): Text to synthesize
-            speaker_id (int, optional): Speaker ID for multi-speaker models
-            style_wav (str, optional): Path to reference audio for style (legacy parameter)
-            reference_wav (str, optional): Path to reference audio for voice cloning
-            alpha (float): Style interpolation factor for voice cloning
-            diffusion_steps (int): Number of diffusion steps
-            
-        Returns:
-            torch.Tensor: Generated mel spectrogram
-        """
-        
-        # Support both style_wav and reference_wav for compatibility
-        ref_wav_path = reference_wav or style_wav
-        
-        # If reference audio is provided, use voice cloning
-        if ref_wav_path:
-            return self.clone_voice(
-                text=text,
-                reference_wav=ref_wav_path,
-                alpha=alpha,
-                diffusion_steps=diffusion_steps,
-                **kwargs
-            )
-        
-        # Standard inference without voice cloning
-        # Tokenize text
-        token_ids = self.tokenizer.text_to_ids(text)
-        token_ids = torch.LongTensor(token_ids).unsqueeze(0)
-        text_lengths = torch.LongTensor([len(token_ids[0])])
-        
-        if torch.cuda.is_available() and next(self.parameters()).is_cuda:
-            token_ids = token_ids.cuda()
-            text_lengths = text_lengths.cuda()
-        
-        speaker_ids = None
-        if speaker_id is not None:
-            speaker_ids = torch.LongTensor([speaker_id])
-            if torch.cuda.is_available() and next(self.parameters()).is_cuda:
-                speaker_ids = speaker_ids.cuda()
-        
-        # Run forward pass
-        with torch.no_grad():
-            outputs = self._inference_with_style(
-                token_ids,
-                text_lengths,
-                speaker_ids=speaker_ids,
-                diffusion_steps=diffusion_steps
-            )
-        
-        mel_pred = outputs["model_outputs"]
-        
-        return mel_pred
     
     def test_run(self, assets) -> Tuple[Dict, Dict]:
         """Test run for model validation."""
