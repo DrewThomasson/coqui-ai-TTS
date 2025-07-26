@@ -121,5 +121,19 @@ class StyleTTS2Config(BaseTTSConfig):
         "extract_prosody": True,             # Extract prosodic features
     })
     
+    # Audio processing configuration
+    audio: Dict = field(default_factory=lambda: {
+        "sample_rate": 24000,
+        "hop_length": 300,
+        "win_length": 1200,
+        "fft_size": 2048,      # AudioProcessor expects fft_size, not n_fft
+        "num_mels": 80,        # AudioProcessor expects num_mels, not n_mels
+        "mel_fmin": 0,         # AudioProcessor expects mel_fmin, not fmin
+        "mel_fmax": 12000,     # AudioProcessor expects mel_fmax, not fmax
+        "output_sample_rate": 24000,
+        "do_trim_silence": True,
+        "trim_db": 30
+    })
+    
     def __post_init__(self):
         super().__post_init__()

@@ -151,16 +151,16 @@ class StyleTTS2(BaseTTS):
 
     def _extract_style_from_audio(self, wav: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
         """Extract style embeddings from reference audio."""
-        # Convert audio to mel spectrogram using AudioProcessor
-        if self.ap is None:
-            raise ValueError("AudioProcessor not initialized. Cannot extract mel spectrogram.")
-        
-        # Convert to numpy for AudioProcessor
-        wav_np = wav.cpu().numpy()
-        
-        # Get mel spectrogram
-        mel = self.ap.melspectrogram(wav_np)
-        mel = torch.FloatTensor(mel).unsqueeze(0)  # Add batch dimension
+        # Convert audio to mel spectrogram using AudioProcessor or fallback
+        if self.ap is not None:
+            # Use AudioProcessor if available
+            wav_np = wav.cpu().numpy()
+            mel = self.ap.melspectrogram(wav_np)
+            mel = torch.FloatTensor(mel).unsqueeze(0)  # Add batch dimension
+        else:
+            # Fallback to torchaudio transforms if AudioProcessor is not available
+            logger.warning("AudioProcessor not available, using torchaudio fallback for mel spectrogram")
+            mel = self._get_mel_spectrogram_fallback(wav)
         
         if torch.cuda.is_available() and next(self.parameters()).is_cuda:
             mel = mel.cuda()
@@ -175,6 +175,40 @@ class StyleTTS2(BaseTTS):
             prosodic_style = self.predictor_encoder(mel_2d)
         
         return acoustic_style, prosodic_style
+    
+    def _get_mel_spectrogram_fallback(self, wav: torch.Tensor) -> torch.Tensor:
+        """Fallback method to compute mel spectrogram using torchaudio."""
+        import torchaudio.transforms as T
+        
+        # StyleTTS2 audio parameters
+        sample_rate = 24000
+        n_fft = 2048
+        hop_length = 300
+        win_length = 1200
+        n_mels = 80
+        f_min = 0
+        f_max = 12000
+        
+        # Create mel spectrogram transform
+        mel_transform = T.MelSpectrogram(
+            sample_rate=sample_rate,
+            n_fft=n_fft,
+            hop_length=hop_length,
+            win_length=win_length,
+            n_mels=n_mels,
+            f_min=f_min,
+            f_max=f_max,
+            power=1.0,  # Use power spectrogram (not amplitude)
+            normalized=False
+        )
+        
+        # Apply transform
+        mel = mel_transform(wav.unsqueeze(0))  # Add channel dimension
+        
+        # Convert to log scale
+        mel = torch.log(torch.clamp(mel, min=1e-5))
+        
+        return mel  # Shape: [1, n_mels, time]
 
     def clone_voice(
         self,
@@ -445,10 +479,10 @@ class StyleTTS2(BaseTTS):
             "sample_rate": 24000,
             "hop_length": 300,
             "win_length": 1200,
-            "n_fft": 2048,
-            "n_mels": 80,
-            "fmin": 0,
-            "fmax": 12000,
+            "fft_size": 2048,  # AudioProcessor expects fft_size, not n_fft
+            "num_mels": 80,    # AudioProcessor expects num_mels, not n_mels
+            "mel_fmin": 0,     # AudioProcessor expects mel_fmin, not fmin
+            "mel_fmax": 12000, # AudioProcessor expects mel_fmax, not fmax
             "output_sample_rate": 24000,
             "do_trim_silence": True,
             "trim_db": 30
@@ -930,10 +964,10 @@ class StyleTTS2(BaseTTS):
                 "sample_rate": 24000,
                 "hop_length": 300, 
                 "win_length": 1200,
-                "n_fft": 2048,
-                "n_mels": 80,
-                "fmin": 0,
-                "fmax": 12000,
+                "fft_size": 2048,    # AudioProcessor expects fft_size, not n_fft
+                "num_mels": 80,      # AudioProcessor expects num_mels, not n_mels
+                "mel_fmin": 0,       # AudioProcessor expects mel_fmin, not fmin
+                "mel_fmax": 12000,   # AudioProcessor expects mel_fmax, not fmax
                 "output_sample_rate": 24000,
                 "do_trim_silence": True,
                 "trim_db": 30
@@ -1025,7 +1059,10 @@ class StyleTTS2(BaseTTS):
             'predictor': 'predictor_encoder',
             'diffusion': 'diffusion',
             'decoder': 'decoder',
-            'duration_predictor': 'duration_predictor'
+            'duration_predictor': 'duration_predictor',
+            # Add alternative names that might exist in original checkpoints
+            'dur_predictor': 'duration_predictor',
+            'dur_pred': 'duration_predictor',
         }
         
         loaded_modules = []
@@ -1051,7 +1088,7 @@ class StyleTTS2(BaseTTS):
         
         logger.info(f"Successfully loaded modules: {loaded_modules}")
         if missing_modules:
-            logger.warning(f"Could not load modules: {missing_modules}")
+            logger.info(f"Could not load modules: {missing_modules}")
             
         # Handle multispeaker embeddings if present
         if 'multispeaker' in model_state and hasattr(self, 'speaker_embedding'):
