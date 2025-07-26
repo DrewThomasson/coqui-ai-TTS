@@ -228,8 +228,14 @@ class StyleTTS2(BaseTTS):
         if mel_np.dim() == 3:
             mel_np = mel_np.squeeze(0)  # Remove batch dimension if present
         
+        # Clamp extreme values to prevent NaN/Inf in exp operation
+        mel_np = torch.clamp(mel_np, min=-10.0, max=10.0)
+        
         # Convert from log mel to linear mel
         mel_linear = torch.exp(mel_np)
+        
+        # Clamp linear mel to reasonable range
+        mel_linear = torch.clamp(mel_linear, min=1e-8, max=100.0)
         
         # Create inverse mel scale transform
         inverse_mel_transform = T.InverseMelScale(
@@ -242,6 +248,9 @@ class StyleTTS2(BaseTTS):
         
         # Convert mel to linear spectrogram
         spec = inverse_mel_transform(mel_linear)
+        
+        # Clamp spectrogram values to prevent Griffin-Lim issues
+        spec = torch.clamp(spec, min=1e-8, max=100.0)
         
         # Create Griffin-Lim transform
         griffin_lim = T.GriffinLim(
@@ -257,6 +266,13 @@ class StyleTTS2(BaseTTS):
         
         # Convert to numpy and ensure it's 1D
         wav_np = wav.squeeze().numpy()
+        
+        # Clean up any remaining NaN/Inf values
+        wav_np = np.nan_to_num(wav_np, nan=0.0, posinf=0.0, neginf=0.0)
+        
+        # Normalize to prevent clipping
+        if np.max(np.abs(wav_np)) > 0:
+            wav_np = wav_np / np.max(np.abs(wav_np)) * 0.95
         
         return wav_np
 
