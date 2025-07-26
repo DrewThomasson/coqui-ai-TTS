@@ -25,7 +25,7 @@ from TTS.utils.audio import AudioProcessor
 logger = logging.getLogger(__name__)
 
 
-class Styletts2(BaseTTS):
+class StyleTTS2(BaseTTS):
     """StyleTTS2 Text-to-Speech model implementation for Coqui TTS."""
 
     def __init__(
@@ -307,17 +307,17 @@ class Styletts2(BaseTTS):
             speaker_manager = SpeakerManager.init_from_config(config, samples)
             language_manager = LanguageManager.init_from_config(config)
             
-            return Styletts2(new_config, ap, tokenizer, speaker_manager, language_manager)
+            return StyleTTS2(new_config, ap, tokenizer, speaker_manager, language_manager)
         else:
             # Original StyleTTS2 YAML config format - convert to Coqui format
-            styletts2_config = Styletts2._convert_original_config(config)
+            styletts2_config = StyleTTS2._convert_original_config(config)
             
             ap = AudioProcessor.init_from_config(styletts2_config)
             tokenizer, new_config = TTSTokenizer.init_from_config(styletts2_config)
             speaker_manager = SpeakerManager.init_from_config(styletts2_config, samples)
             language_manager = LanguageManager.init_from_config(styletts2_config)
             
-            return Styletts2(new_config, ap, tokenizer, speaker_manager, language_manager)
+            return StyleTTS2(new_config, ap, tokenizer, speaker_manager, language_manager)
 
     @staticmethod
     def _convert_original_config(original_config):
