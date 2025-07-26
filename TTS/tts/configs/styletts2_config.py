@@ -111,5 +111,15 @@ class StyleTTS2Config(BaseTTSConfig):
     embedding_scale: float = 1.0
     alpha: float = 0.3
     
+    # Voice cloning parameters
+    voice_cloning: Dict = field(default_factory=lambda: {
+        "reference_audio_max_length": 10.0,  # Max length in seconds
+        "style_interpolation_alpha": 0.3,    # Default alpha for style interpolation
+        "diffusion_steps": 10,               # Default diffusion steps for cloning
+        "enable_preprocessing": True,        # Enable audio preprocessing
+        "normalize_reference": True,         # Normalize reference audio
+        "extract_prosody": True,             # Extract prosodic features
+    })
+    
     def __post_init__(self):
         super().__post_init__()

@@ -1,11 +1,13 @@
 import os
 import logging
-from typing import Dict, List, Tuple, Union
+from typing import Dict, List, Tuple, Union, Optional
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn import MSELoss
+import torchaudio
+import numpy as np
 
 from TTS.tts.layers.styletts2.models import (
     StyleEncoder, 
@@ -104,6 +106,189 @@ class Styletts2(BaseTTS):
                 self.speaker_manager.num_speakers, self.style_dim
             )
 
+    def _load_reference_audio(self, reference_wav: str) -> torch.Tensor:
+        """Load and preprocess reference audio for voice cloning."""
+        if not os.path.exists(reference_wav):
+            raise FileNotFoundError(f"Reference audio file not found: {reference_wav}")
+        
+        # Load audio using torchaudio
+        wav, sr = torchaudio.load(reference_wav)
+        
+        # Convert to mono if stereo
+        if wav.shape[0] > 1:
+            wav = wav.mean(dim=0, keepdim=True)
+        
+        # Resample if needed
+        if sr != self.config.sample_rate:
+            resampler = torchaudio.transforms.Resample(sr, self.config.sample_rate)
+            wav = resampler(wav)
+        
+        # Normalize audio
+        wav = wav / wav.abs().max()
+        
+        return wav.squeeze(0)  # Remove channel dimension
+
+    def _extract_style_from_audio(self, wav: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Extract style embeddings from reference audio."""
+        # Convert audio to mel spectrogram using AudioProcessor
+        if self.ap is None:
+            raise ValueError("AudioProcessor not initialized. Cannot extract mel spectrogram.")
+        
+        # Convert to numpy for AudioProcessor
+        wav_np = wav.cpu().numpy()
+        
+        # Get mel spectrogram
+        mel = self.ap.melspectrogram(wav_np)
+        mel = torch.FloatTensor(mel).unsqueeze(0)  # Add batch dimension
+        
+        if torch.cuda.is_available() and next(self.parameters()).is_cuda:
+            mel = mel.cuda()
+        
+        # Extract style embeddings using the style encoders
+        with torch.no_grad():
+            # Add channel dimension for conv layers
+            mel_2d = mel.unsqueeze(1)  # [B, 1, n_mels, T]
+            
+            # Extract acoustic and prosodic styles
+            acoustic_style = self.style_encoder(mel_2d)
+            prosodic_style = self.predictor_encoder(mel_2d)
+        
+        return acoustic_style, prosodic_style
+
+    def clone_voice(
+        self,
+        text: str,
+        reference_wav: str,
+        alpha: float = 0.3,
+        diffusion_steps: int = 10,
+        **kwargs
+    ) -> torch.Tensor:
+        """
+        Clone a voice from reference audio and synthesize the given text.
+        
+        Args:
+            text (str): Text to synthesize
+            reference_wav (str): Path to reference audio file
+            alpha (float): Style interpolation factor (0=original, 1=reference style)
+            diffusion_steps (int): Number of diffusion steps for style generation
+            
+        Returns:
+            torch.Tensor: Generated mel spectrogram
+        """
+        logger.info(f"Cloning voice from: {reference_wav}")
+        
+        # Load and process reference audio
+        ref_wav = self._load_reference_audio(reference_wav)
+        
+        # Extract style from reference audio
+        ref_acoustic_style, ref_prosodic_style = self._extract_style_from_audio(ref_wav)
+        
+        # Tokenize text
+        token_ids = self.tokenizer.text_to_ids(text)
+        token_ids = torch.LongTensor(token_ids).unsqueeze(0)
+        text_lengths = torch.LongTensor([len(token_ids[0])])
+        
+        if torch.cuda.is_available() and next(self.parameters()).is_cuda:
+            token_ids = token_ids.cuda()
+            text_lengths = text_lengths.cuda()
+        
+        # Run inference with reference style
+        with torch.no_grad():
+            outputs = self._inference_with_style(
+                token_ids,
+                text_lengths,
+                ref_acoustic_style=ref_acoustic_style,
+                ref_prosodic_style=ref_prosodic_style,
+                alpha=alpha,
+                diffusion_steps=diffusion_steps
+            )
+        
+        mel_pred = outputs["model_outputs"]
+        logger.info(f"Voice cloning completed. Output shape: {mel_pred.shape}")
+        
+        return mel_pred
+
+    def _inference_with_style(
+        self,
+        x: torch.Tensor,
+        x_lengths: torch.Tensor,
+        ref_acoustic_style: torch.Tensor = None,
+        ref_prosodic_style: torch.Tensor = None,
+        alpha: float = 0.3,
+        diffusion_steps: int = 10,
+        speaker_ids: torch.Tensor = None,
+    ) -> Dict[str, torch.Tensor]:
+        """Internal inference method with style control."""
+        
+        # Create text mask
+        text_mask = self.text_encoder.length_to_mask(x_lengths).to(x.device)
+        
+        # Text encoding 
+        text_encoded = self.text_encoder(x, x_lengths, text_mask)
+        
+        # Generate or use provided styles
+        batch_size = x.size(0)
+        
+        if ref_acoustic_style is not None and ref_prosodic_style is not None:
+            # Use reference styles
+            acoustic_style = ref_acoustic_style
+            prosodic_style = ref_prosodic_style
+            
+            # Optionally interpolate with random style for variation
+            if alpha < 1.0:
+                random_acoustic = torch.randn_like(acoustic_style)
+                random_prosodic = torch.randn_like(prosodic_style)
+                
+                acoustic_style = alpha * acoustic_style + (1 - alpha) * random_acoustic
+                prosodic_style = alpha * prosodic_style + (1 - alpha) * random_prosodic
+        else:
+            # Generate random styles for inference
+            acoustic_style = torch.randn(batch_size, self.style_dim).to(x.device)
+            prosodic_style = torch.randn(batch_size, self.style_dim).to(x.device)
+        
+        # Add speaker embedding if multispeaker
+        if self.multispeaker and speaker_ids is not None:
+            speaker_emb = self.speaker_embedding(speaker_ids)
+            acoustic_style = acoustic_style + speaker_emb
+            prosodic_style = prosodic_style + speaker_emb
+        
+        # Duration prediction
+        duration_pred = self.duration_predictor(text_encoded.transpose(-1, -2))
+        duration_pred = F.softplus(duration_pred).squeeze(-1)
+        
+        # Simple duration alignment
+        aligned_text = text_encoded
+        
+        # Apply diffusion model with enhanced steps
+        combined_style = torch.cat([acoustic_style, prosodic_style], dim=-1)
+        
+        # Enhanced diffusion process for better voice cloning
+        for step in range(diffusion_steps):
+            timestep = torch.full((batch_size,), step / diffusion_steps).to(x.device)
+            combined_style = self.diffusion(
+                combined_style,
+                timesteps=timestep,
+                context=aligned_text.mean(dim=-1)
+            )
+        
+        # Split back to acoustic style for decoder
+        style_for_decoder = combined_style[:, :self.style_dim]
+        
+        # Decode to mel spectrogram
+        mel_pred = self.decoder(aligned_text, style_for_decoder)
+        
+        outputs = {
+            "model_outputs": mel_pred,
+            "durations_log": duration_pred,
+            "alignments": None,
+            "text_hidden": text_encoded,
+            "style": style_for_decoder,
+            "acoustic_style": acoustic_style,
+            "prosodic_style": prosodic_style,
+        }
+        
+        return outputs
+
     @staticmethod  
     def init_from_config(
         config: "Coqpit", samples: Union[List[List], List[Dict]] = None, verbose: bool = True
@@ -142,18 +327,18 @@ class Styletts2(BaseTTS):
         if y is not None:
             # Convert mel to appropriate format for style encoder
             y_2d = y.unsqueeze(1)  # Add channel dimension
-            style = self.style_encoder(y_2d)
+            acoustic_style = self.style_encoder(y_2d)
             prosodic_style = self.predictor_encoder(y_2d)
         else:
             # Generate random style for inference
             batch_size = x.size(0)
-            style = torch.randn(batch_size, self.style_dim).to(x.device)
+            acoustic_style = torch.randn(batch_size, self.style_dim).to(x.device)
             prosodic_style = torch.randn(batch_size, self.style_dim).to(x.device)
         
         # Add speaker embedding if multispeaker
         if self.multispeaker and speaker_ids is not None:
             speaker_emb = self.speaker_embedding(speaker_ids)
-            style = style + speaker_emb
+            acoustic_style = acoustic_style + speaker_emb
             prosodic_style = prosodic_style + speaker_emb
         
         # Duration prediction
@@ -170,8 +355,8 @@ class Styletts2(BaseTTS):
         
         # Apply diffusion model to generate style
         diffused_style = self.diffusion(
-            torch.cat([style, prosodic_style], dim=-1),
-            timesteps=torch.zeros(style.size(0)).to(style.device),
+            torch.cat([acoustic_style, prosodic_style], dim=-1),
+            timesteps=torch.zeros(acoustic_style.size(0)).to(acoustic_style.device),
             context=aligned_text.mean(dim=-1)  # Simple context
         )
         
@@ -185,7 +370,9 @@ class Styletts2(BaseTTS):
             "durations_log": duration_pred,
             "alignments": None,  # Placeholder
             "text_hidden": text_encoded,
-            "style": style,
+            "style": style_for_decoder,
+            "acoustic_style": acoustic_style,
+            "prosodic_style": prosodic_style,
         }
         
         return outputs
@@ -240,31 +427,62 @@ class Styletts2(BaseTTS):
         text: str,
         speaker_id: int = None,
         style_wav: str = None,
+        reference_wav: str = None,
+        alpha: float = 0.3,
+        diffusion_steps: int = 10,
         **kwargs
     ) -> torch.Tensor:
-        """Run StyleTTS2 inference."""
+        """
+        Run StyleTTS2 inference with optional voice cloning.
         
+        Args:
+            text (str): Text to synthesize
+            speaker_id (int, optional): Speaker ID for multi-speaker models
+            style_wav (str, optional): Path to reference audio for style (legacy parameter)
+            reference_wav (str, optional): Path to reference audio for voice cloning
+            alpha (float): Style interpolation factor for voice cloning
+            diffusion_steps (int): Number of diffusion steps
+            
+        Returns:
+            torch.Tensor: Generated mel spectrogram
+        """
+        
+        # Support both style_wav and reference_wav for compatibility
+        ref_wav_path = reference_wav or style_wav
+        
+        # If reference audio is provided, use voice cloning
+        if ref_wav_path:
+            return self.clone_voice(
+                text=text,
+                reference_wav=ref_wav_path,
+                alpha=alpha,
+                diffusion_steps=diffusion_steps,
+                **kwargs
+            )
+        
+        # Standard inference without voice cloning
         # Tokenize text
         token_ids = self.tokenizer.text_to_ids(text)
         token_ids = torch.LongTensor(token_ids).unsqueeze(0)
         text_lengths = torch.LongTensor([len(token_ids[0])])
         
-        if torch.cuda.is_available():
+        if torch.cuda.is_available() and next(self.parameters()).is_cuda:
             token_ids = token_ids.cuda()
             text_lengths = text_lengths.cuda()
         
         speaker_ids = None
         if speaker_id is not None:
             speaker_ids = torch.LongTensor([speaker_id])
-            if torch.cuda.is_available():
+            if torch.cuda.is_available() and next(self.parameters()).is_cuda:
                 speaker_ids = speaker_ids.cuda()
         
         # Run forward pass
         with torch.no_grad():
-            outputs = self.forward(
+            outputs = self._inference_with_style(
                 token_ids,
                 text_lengths,
-                speaker_ids=speaker_ids
+                speaker_ids=speaker_ids,
+                diffusion_steps=diffusion_steps
             )
         
         mel_pred = outputs["model_outputs"]
