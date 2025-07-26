@@ -85,6 +85,7 @@ repository are also still a useful source of information.
 - 🐸[YourTTS](https://arxiv.org/abs/2112.02418)
 - 🐢[Tortoise](https://github.com/neonbjb/tortoise-tts)
 - 🐶[Bark](https://github.com/suno-ai/bark)
+- [StyleTTS2](https://arxiv.org/abs/2306.07691)
 
 ### Vocoders
 - [MelGAN](https://arxiv.org/abs/1910.06711)
@@ -281,6 +282,24 @@ api.tts_to_file(
     "Wie sage ich auf Italienisch, dass ich dich liebe?",
     file_path="output.wav"
 )
+```
+
+#### TTS with StyleTTS2 - Human-Level Speech Synthesis
+StyleTTS2 uses style diffusion and adversarial training for state-of-the-art speech synthesis.
+
+```python
+from TTS.tts.configs.styletts2_config import StyleTTS2Config
+from TTS.tts.models.styletts2 import Styletts2
+
+# Initialize StyleTTS2
+config = StyleTTS2Config()
+model = Styletts2.init_from_config(config, [])
+
+# Generate speech
+mel_output = model.inference("StyleTTS2 produces human-level speech synthesis!")
+
+# For training, use the standard Coqui TTS training pipeline with StyleTTS2 config
+# python -m TTS.bin.train_tts --config_path path/to/styletts2_config.json
 ```
 
 ### Command-line interface `tts`
