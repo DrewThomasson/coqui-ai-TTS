@@ -209,6 +209,56 @@ class StyleTTS2(BaseTTS):
         mel = torch.log(torch.clamp(mel, min=1e-5))
         
         return mel  # Shape: [1, n_mels, time]
+    
+    def _mel_to_wav_griffinlim(self, mel_outputs: torch.Tensor) -> np.ndarray:
+        """Convert mel spectrogram to waveform using Griffin-Lim algorithm."""
+        import torchaudio.transforms as T
+        
+        # StyleTTS2 audio parameters
+        sample_rate = 24000
+        n_fft = 2048
+        hop_length = 300
+        win_length = 1200
+        n_mels = 80
+        f_min = 0
+        f_max = 12000
+        
+        # Ensure mel_outputs is on CPU and in the right format
+        mel_np = mel_outputs.squeeze().cpu()
+        if mel_np.dim() == 3:
+            mel_np = mel_np.squeeze(0)  # Remove batch dimension if present
+        
+        # Convert from log mel to linear mel
+        mel_linear = torch.exp(mel_np)
+        
+        # Create inverse mel scale transform
+        inverse_mel_transform = T.InverseMelScale(
+            n_stft=n_fft // 2 + 1,
+            n_mels=n_mels,
+            sample_rate=sample_rate,
+            f_min=f_min,
+            f_max=f_max,
+        )
+        
+        # Convert mel to linear spectrogram
+        spec = inverse_mel_transform(mel_linear)
+        
+        # Create Griffin-Lim transform
+        griffin_lim = T.GriffinLim(
+            n_fft=n_fft,
+            hop_length=hop_length,
+            win_length=win_length,
+            power=1.0,  # Use magnitude spectrogram
+            n_iter=32   # Number of Griffin-Lim iterations
+        )
+        
+        # Convert spectrogram to waveform
+        wav = griffin_lim(spec)
+        
+        # Convert to numpy and ensure it's 1D
+        wav_np = wav.squeeze().numpy()
+        
+        return wav_np
 
     def clone_voice(
         self,
@@ -367,6 +417,7 @@ class StyleTTS2(BaseTTS):
             
             # Initialize components with error handling
             try:
+                logger.info(f"AudioProcessor config: fft_size={working_config.audio.get('fft_size', 'NOT SET')}, win_length={working_config.audio.get('win_length', 'NOT SET')}")
                 ap = AudioProcessor.init_from_config(working_config)
                 logger.info("AudioProcessor initialized successfully")
             except Exception as e:
@@ -1153,9 +1204,9 @@ class StyleTTS2(BaseTTS):
                 mel_np = mel_outputs.squeeze().cpu().numpy()
                 wav = self.ap.inv_melspectrogram(mel_np.T)
             else:
-                # Return mel spectrogram if no vocoder available 
-                # The synthesizer will handle vocoding
-                wav = mel_outputs.squeeze().cpu().numpy()
+                # Fallback: convert mel spectrogram to waveform using Griffin-Lim
+                logger.warning("No vocoder available, using Griffin-Lim reconstruction")
+                wav = self._mel_to_wav_griffinlim(mel_outputs)
             
             # Create return dictionary matching TTS API expectations
             return_dict = {
