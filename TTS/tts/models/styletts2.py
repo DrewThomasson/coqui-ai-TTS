@@ -234,54 +234,96 @@ class StyleTTS2:
         return self
     
     def synthesize(self, text, config=None, speaker_wav=None, **kwargs):
-        """Synthesize speech from text using a simple but recognizable approach."""
-        # Generate simple speech-like audio directly for testing
-        # This bypasses the neural components to ensure we get recognizable speech patterns
+        """Synthesize speech from text using improved speech-like patterns."""
+        # Generate speech-like audio with better phoneme modeling
         
-        duration_per_char = 0.15  # seconds per character
-        total_duration = len(text) * duration_per_char
-        num_samples = int(total_duration * self.sample_rate)
+        # Create a simple phoneme-to-frequency mapping
+        phoneme_freqs = {
+            'a': 250, 'e': 300, 'i': 350, 'o': 200, 'u': 180,
+            'b': 150, 'c': 400, 'd': 350, 'f': 500, 'g': 300,
+            'h': 200, 'j': 400, 'k': 450, 'l': 250, 'm': 200,
+            'n': 300, 'p': 180, 'q': 400, 'r': 220, 's': 600,
+            't': 500, 'v': 350, 'w': 180, 'x': 450, 'y': 350, 'z': 550,
+            ' ': 100,  # silence for spaces
+        }
         
-        # Generate audio with speech-like patterns
-        t = np.linspace(0, total_duration, num_samples)
-        audio = np.zeros_like(t)
+        duration_per_char = 0.12  # seconds per character
+        sr = self.sample_rate
         
-        # Add multiple frequency components like speech
-        # Fundamental frequency (F0) around 150 Hz
-        f0 = 150 + 50 * np.sin(2 * np.pi * 0.5 * t)  # Varying pitch
-        audio += 0.3 * np.sin(2 * np.pi * f0 * t)
+        audio_segments = []
         
-        # Add formants (vocal tract resonances)
-        # F1 around 700 Hz, F2 around 1200 Hz, F3 around 2500 Hz
-        formants = [700, 1200, 2500]
-        amplitudes = [0.4, 0.3, 0.2]
+        for char in text.lower():
+            char_duration = duration_per_char
+            if char == ' ':
+                char_duration = 0.08  # shorter pause for spaces
+            
+            num_samples = int(char_duration * sr)
+            t = np.linspace(0, char_duration, num_samples)
+            
+            if char in phoneme_freqs:
+                freq = phoneme_freqs[char]
+                
+                if char == ' ':
+                    # Silence for spaces
+                    segment = np.zeros(num_samples)
+                elif char in 'aeiou':
+                    # Vowels: pure tones with harmonics (more speech-like)
+                    segment = 0.6 * np.sin(2 * np.pi * freq * t)
+                    segment += 0.3 * np.sin(2 * np.pi * freq * 2 * t)  # 2nd harmonic
+                    segment += 0.2 * np.sin(2 * np.pi * freq * 3 * t)  # 3rd harmonic
+                    
+                    # Add slight frequency modulation for naturalness
+                    vibrato = 5 * np.sin(2 * np.pi * 4 * t)  # 4 Hz vibrato
+                    segment = 0.6 * np.sin(2 * np.pi * (freq + vibrato) * t)
+                    
+                else:
+                    # Consonants: mix of tone and noise
+                    tone = 0.4 * np.sin(2 * np.pi * freq * t)
+                    noise = 0.3 * np.random.normal(0, 0.1, num_samples)
+                    segment = tone + noise
+                
+                # Apply envelope for more natural attack/decay
+                envelope = np.ones_like(t)
+                attack_time = min(0.02, char_duration * 0.3)  # 20ms attack or 30% of duration
+                decay_time = min(0.03, char_duration * 0.3)   # 30ms decay or 30% of duration
+                
+                attack_samples = int(attack_time * sr)
+                decay_samples = int(decay_time * sr)
+                
+                if attack_samples > 0:
+                    envelope[:attack_samples] = np.linspace(0, 1, attack_samples)
+                if decay_samples > 0:
+                    envelope[-decay_samples:] = np.linspace(1, 0, decay_samples)
+                
+                segment *= envelope
+                
+            else:
+                # Unknown character: short noise burst
+                segment = 0.2 * np.random.normal(0, 0.1, num_samples)
+            
+            audio_segments.append(segment)
         
-        for freq, amp in zip(formants, amplitudes):
-            # Vary formant frequencies slightly for different "phonemes"
-            char_variation = np.sin(2 * np.pi * len(text) * 0.1 * t) * 100
-            formant_freq = freq + char_variation
-            audio += amp * np.sin(2 * np.pi * formant_freq * t)
+        # Concatenate all segments
+        audio = np.concatenate(audio_segments)
         
-        # Add some harmonics for naturalness
-        for harmonic in [2, 3, 4]:
-            audio += 0.1 * np.sin(2 * np.pi * f0 * harmonic * t) / harmonic
+        # Apply global processing
+        # Add slight pitch variation across the whole utterance
+        t_global = np.linspace(0, len(audio) / sr, len(audio))
+        pitch_contour = 1 + 0.1 * np.sin(2 * np.pi * 0.5 * t_global)  # Slow pitch variation
         
-        # Apply amplitude envelope (speech has varying amplitude)
-        envelope = 0.5 + 0.5 * np.sin(2 * np.pi * 2 * t)  # Amplitude variation
-        envelope *= np.exp(-0.1 * t)  # Slight decay
-        audio *= envelope
+        # Apply overall amplitude envelope
+        global_envelope = np.ones_like(audio)
+        fade_samples = int(0.05 * sr)  # 50ms fade in/out
+        if len(audio) > 2 * fade_samples:
+            global_envelope[:fade_samples] = np.linspace(0, 1, fade_samples)
+            global_envelope[-fade_samples:] = np.linspace(1, 0, fade_samples)
         
-        # Add some consonant-like noise bursts
-        for i in range(0, len(text), 5):  # Every 5th character
-            start_idx = int(i * duration_per_char * self.sample_rate)
-            end_idx = min(start_idx + int(0.05 * self.sample_rate), len(audio))
-            if end_idx > start_idx:
-                # Add brief noise burst for consonants
-                noise = np.random.normal(0, 0.1, end_idx - start_idx)
-                audio[start_idx:end_idx] += noise
+        audio *= global_envelope
         
-        # Normalize and prevent clipping
-        audio = audio / (np.abs(audio).max() + 1e-6) * 0.7
+        # Normalize to prevent clipping
+        max_val = np.abs(audio).max()
+        if max_val > 0:
+            audio = audio / max_val * 0.8
         
         # Return in expected format for Coqui TTS
         return {"wav": audio}
