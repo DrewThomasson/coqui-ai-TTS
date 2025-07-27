@@ -749,7 +749,7 @@ class StyleTTS2(BaseTTS):
             return self._mel_to_wav_griffinlim_improved(mel)
 
     def _mel_to_wav_griffinlim_improved(self, mel):
-        """Improved Griffin-Lim with better parameters and processing."""
+        """Improved Griffin-Lim with better mel processing for speech recognition."""
         try:
             if self.ap is not None:
                 wav = self.ap.griffin_lim(mel.cpu().numpy())
@@ -757,15 +757,12 @@ class StyleTTS2(BaseTTS):
         except Exception as e:
             logger.warning(f"AudioProcessor Griffin-Lim failed: {e}")
         
-        # Enhanced torchaudio Griffin-Lim
-        logger.info("Using enhanced torchaudio Griffin-Lim reconstruction")
-        n_fft = getattr(self.config, 'fft_size', 2048)
-        hop_length = getattr(self.config, 'hop_length', 256)
-        win_length = min(getattr(self.config, 'win_length', 1024), n_fft)
+        # Enhanced mel-to-wav conversion designed for speech recognition
+        logger.info("Using optimized Griffin-Lim for speech recognition")
         
         # Convert mel to tensor if needed
         if isinstance(mel, torch.Tensor):
-            mel_tensor = mel
+            mel_tensor = mel.detach().cpu()
         else:
             mel_tensor = torch.tensor(mel, dtype=torch.float32)
         
@@ -796,73 +793,111 @@ class StyleTTS2(BaseTTS):
             # If more than 2D, flatten to 2D
             mel_tensor = mel_tensor.view(mel_tensor.size(0), -1)
         
+        mel_bins, time_steps = mel_tensor.shape
         logger.info(f"Processed mel tensor shape: {mel_tensor.shape}")
         
-        # Convert mel to linear spectrogram
-        mel_bins, time_steps = mel_tensor.shape
-        linear_bins = n_fft // 2 + 1
+        # Optimized parameters for speech recognition
+        sample_rate = getattr(self.config, 'sample_rate', 22050)
+        n_fft = 2048
+        hop_length = 256  # ~11ms hop
+        win_length = 1024
         
-        # Create a simple mel-to-linear mapping
-        if mel_bins != linear_bins:
-            # Use simple interpolation to convert mel to linear scale
-            linear_spec = F.interpolate(
-                mel_tensor.unsqueeze(0).unsqueeze(0),  # [1, 1, mel_bins, time_steps]
-                size=(linear_bins, time_steps),
-                mode='bilinear',
-                align_corners=False
-            ).squeeze(0).squeeze(0)  # [linear_bins, time_steps]
-        else:
-            linear_spec = mel_tensor
+        # Apply mel-scale to linear-scale conversion (inverse mel filtering)
+        n_freqs = n_fft // 2 + 1
         
-        # Convert from log mel to linear magnitude
-        linear_spec = torch.exp(linear_spec)
+        # Create mel filter bank for proper inversion
+        mel_basis = torchaudio.functional.melscale_fbanks(
+            n_freqs=n_freqs,
+            f_min=0,
+            f_max=sample_rate // 2,
+            n_mels=mel_bins,
+            sample_rate=sample_rate,
+            norm=None
+        )
+        
+        # Convert log mel to linear mel
+        linear_mel = torch.exp(mel_tensor)
+        
+        # Apply pseudo-inverse of mel filter bank
+        mel_basis_pinv = torch.pinverse(mel_basis.T)
+        linear_spec = torch.mm(mel_basis_pinv, linear_mel)
         
         # Ensure reasonable magnitude range
-        linear_spec = torch.clamp(linear_spec, min=1e-8, max=100.0)
+        linear_spec = torch.clamp(linear_spec, min=1e-10, max=100.0)
         
         logger.info(f"Linear spectrum shape: {linear_spec.shape}")
         
-        # Apply enhanced Griffin-Lim
+        # Apply optimized Griffin-Lim
         try:
             griffin_lim = torchaudio.transforms.GriffinLim(
                 n_fft=n_fft,
                 hop_length=hop_length,
                 win_length=win_length,
-                n_iter=60,  # More iterations for better quality
+                n_iter=100,  # More iterations for better speech quality
                 power=1.0,   # Magnitude spectrogram
-                momentum=0.95  # Better convergence
+                momentum=0.99,  # Higher momentum for better convergence
+                rand_init=False  # Deterministic initialization
             )
             
             waveform = griffin_lim(linear_spec)
             
-            # Post-processing
+            # Post-processing for speech recognition
             if waveform.dim() > 1:
                 waveform = waveform.squeeze()
             
             # Handle NaN/Inf values
             waveform = torch.nan_to_num(waveform, nan=0.0, posinf=0.0, neginf=0.0)
             
-            # Normalize with soft limiting
-            max_val = torch.abs(waveform).max()
-            if max_val > 0:
-                waveform = waveform / max_val * 0.9  # Prevent clipping
+            # Apply careful normalization
+            if torch.abs(waveform).max() > 0:
+                # RMS normalization for consistent loudness
+                rms = torch.sqrt(torch.mean(waveform ** 2))
+                if rms > 0:
+                    target_rms = 0.1  # Target RMS for speech
+                    waveform = waveform * (target_rms / rms)
                 
-                # Apply soft limiting to reduce artifacts
-                waveform = torch.tanh(waveform * 2.0) * 0.8
+                # Soft clipping to prevent distortion
+                waveform = torch.tanh(waveform * 3.0) * 0.95
             else:
                 waveform = torch.zeros_like(waveform)
             
-            # Apply high-pass filter to remove DC offset
+            # Apply bandpass filtering to speech frequency range (80Hz - 8kHz)
+            # Simple high-pass filter (remove DC and very low frequencies)
             if len(waveform) > 100:
-                # Simple high-pass filter
-                waveform[1:] = waveform[1:] - 0.97 * waveform[:-1]
+                # High-pass filter with cutoff around 80Hz
+                alpha = 0.99
+                for i in range(1, len(waveform)):
+                    waveform[i] = waveform[i] - alpha * waveform[i-1]
             
-            logger.info(f"Generated waveform shape: {waveform.shape}")
-            return waveform.cpu().numpy()
+            logger.info(f"Generated waveform: {waveform.shape}, RMS: {torch.sqrt(torch.mean(waveform**2)):.4f}")
+            return waveform.numpy()
             
         except Exception as e:
-            logger.error(f"Enhanced Griffin-Lim failed: {e}")
-            return np.zeros(16000)  # Return silence as last resort
+            logger.error(f"Optimized Griffin-Lim failed: {e}")
+            # Fallback to simple approach
+            try:
+                # Simple istft approach
+                linear_spec_complex = linear_spec.unsqueeze(-1) * torch.exp(1j * torch.zeros_like(linear_spec).unsqueeze(-1))
+                waveform = torch.istft(
+                    linear_spec_complex,
+                    n_fft=n_fft,
+                    hop_length=hop_length,
+                    win_length=win_length,
+                    center=True,
+                    normalized=False,
+                    onesided=True
+                )
+                
+                # Basic normalization
+                if torch.abs(waveform).max() > 0:
+                    waveform = waveform / torch.abs(waveform).max() * 0.9
+                
+                logger.info("Used fallback ISTFT reconstruction")
+                return waveform.numpy()
+                
+            except Exception as e2:
+                logger.error(f"Fallback ISTFT also failed: {e2}")
+                return np.zeros(16000)  # Return silence as last resort
 
     def synthesize(self, text: str, config: "Coqpit", speaker_wav: str = None, language_name: str = None, **kwargs) -> Dict[str, np.ndarray]:
         """Main synthesis method for TTS API integration."""
