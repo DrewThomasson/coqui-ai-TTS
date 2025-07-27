@@ -54,6 +54,39 @@
                     "commit": "e9a1953e",
                     "license": "MIT",
                     "contact": "https://www.suno.ai/"
+                },
+                "styletts2": {
+                    "description": "StyleTTS2 - Human-level Text-to-Speech with voice cloning (default: LJSpeech model)", 
+                    "hf_url": [
+                        "https://huggingface.co/yl4579/StyleTTS2-LJSpeech/resolve/main/Models/LJSpeech/config.yml",
+                        "https://huggingface.co/yl4579/StyleTTS2-LJSpeech/resolve/main/Models/LJSpeech/epoch_2nd_00100.pth"
+                    ],
+                    "default_vocoder": null,
+                    "commit": "e055685",
+                    "license": "MIT",
+                    "contact": "https://github.com/yl4579/StyleTTS2"
+                },
+                "styletts2_ljspeech": {
+                    "description": "StyleTTS2 trained on LJSpeech - Human-level single-speaker English TTS with voice cloning",
+                    "hf_url": [
+                        "https://huggingface.co/yl4579/StyleTTS2-LJSpeech/resolve/main/Models/LJSpeech/config.yml",
+                        "https://huggingface.co/yl4579/StyleTTS2-LJSpeech/resolve/main/Models/LJSpeech/epoch_2nd_00100.pth"
+                    ],
+                    "default_vocoder": null,
+                    "commit": "a55f614",
+                    "license": "MIT",
+                    "contact": "https://github.com/yl4579/StyleTTS2"
+                },
+                "styletts2_libri": {
+                    "description": "StyleTTS2 trained on LibriTTS - Human-level multi-speaker English TTS with voice cloning",
+                    "hf_url": [
+                        "https://huggingface.co/yl4579/StyleTTS2-LibriTTS/resolve/main/Models/LibriTTS/config.yml",
+                        "https://huggingface.co/yl4579/StyleTTS2-LibriTTS/resolve/main/Models/LibriTTS/epochs_2nd_00020.pth"
+                    ],
+                    "default_vocoder": null,
+                    "commit": "a55f614",
+                    "license": "MIT",
+                    "contact": "https://github.com/yl4579/StyleTTS2"
                 }
             }
         },

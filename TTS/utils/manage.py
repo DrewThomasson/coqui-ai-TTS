@@ -460,9 +460,9 @@ class ModelManager:
         model_file = None
         config_file = None
         for f in output_path.iterdir():
-            if f.name in ["model_file.pth", "model_file.pth.tar", "model.pth", "checkpoint.pth"]:
+            if f.name in ["model_file.pth", "model_file.pth.tar", "model.pth", "checkpoint.pth"] or f.name.endswith('.pth'):
                 model_file = f
-            elif f.name == "config.json":
+            elif f.name in ["config.json", "config.yml"]:
                 config_file = f
         if model_file is None:
             raise ValueError(" [!] Model file not found in the output path")
