@@ -116,7 +116,13 @@ class StyleTTS2(BaseTTS):
 
     def _phonemize(self, text):
         """Convert text to phoneme token IDs."""
+        import nltk
         from nltk.tokenize import word_tokenize
+
+        try:
+            word_tokenize("test")
+        except LookupError:
+            nltk.download("punkt_tab", quiet=True)
 
         self._init_phonemizer()
         text = text.strip().replace('"', '')
