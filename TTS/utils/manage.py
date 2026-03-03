@@ -366,7 +366,7 @@ class ModelManager:
         if model in ("style_tts2", "style_tts2-multispeaker") and not output_config_path.exists():
             output_config_path = output_path / "config.json"
             if not output_config_path.is_file():
-                from TTS.tts.configs.styletts2_config import StyleTTS2Config
+                from TTS.tts.configs.style_tts2_config import StyleTTS2Config
 
                 styletts2_config = StyleTTS2Config()
                 if "multispeaker" in model:

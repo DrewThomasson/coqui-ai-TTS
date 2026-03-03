@@ -17,7 +17,7 @@ import torchaudio
 from coqpit import Coqpit
 from munch import Munch
 
-from TTS.tts.configs.styletts2_config import StyleTTS2Config
+from TTS.tts.configs.style_tts2_config import StyleTTS2Config
 from TTS.tts.layers.styletts2.diffusion.sampler import (
     ADPM2Sampler,
     DiffusionSampler,
