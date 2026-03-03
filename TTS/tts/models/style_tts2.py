@@ -30,7 +30,6 @@ from TTS.tts.layers.styletts2.models import (
 )
 from TTS.tts.layers.styletts2.text_utils import TextCleaner
 from TTS.tts.models.base_tts import BaseTTS
-from TTS.utils.generic_utils import is_pytorch_at_least_2_4
 
 logger = logging.getLogger(__name__)
 
@@ -455,8 +454,7 @@ class StyleTTS2(BaseTTS):
 
         ckpt_path = pth_files[-1]
         logger.info("Loading checkpoint: %s", ckpt_path)
-        weights_only = is_pytorch_at_least_2_4()
-        state = torch.load(str(ckpt_path), map_location="cpu", weights_only=weights_only)
+        state = torch.load(str(ckpt_path), map_location="cpu", weights_only=False)
         params = state["net"]
 
         for key in model:
