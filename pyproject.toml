@@ -85,6 +85,10 @@ dependencies = [
     "huggingface-hub>=0.36.0",
     # XTTS
     "num2words>=0.5.14",
+    # StyleTTS2
+    "munch>=4.0.0",
+    "phonemizer>=3.2.1",
+    "nltk>=3.8.1",
 ]
 
 [project.optional-dependencies]

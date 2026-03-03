@@ -7,7 +7,8 @@ import torch
 import torch.nn as nn
 from einops import rearrange, reduce, repeat
 from einops.layers.torch import Rearrange
-from einops_exts import rearrange_many
+def rearrange_many(tensors, pattern, **kwargs):
+    return [rearrange(t, pattern, **kwargs) for t in tensors]
 from torch import Tensor, einsum
 
 
