@@ -36,7 +36,7 @@ class LearnedDownSample(nn.Module):
         elif self.layer_type == 'half':
             self.conv = spectral_norm(nn.Conv2d(dim_in, dim_in, kernel_size=(3, 3), stride=(2, 2), groups=dim_in, padding=1))
         else:
-            raise RuntimeError('Got unexpected donwsampletype %s, expected is [none, timepreserve, half]' % self.layer_type)
+            raise RuntimeError('Got unexpected downsampletype %s, expected is [none, timepreserve, half]' % self.layer_type)
             
     def forward(self, x):
         return self.conv(x)
@@ -74,7 +74,7 @@ class DownSample(nn.Module):
                 x = torch.cat([x, x[..., -1].unsqueeze(-1)], dim=-1)
             return F.avg_pool2d(x, 2)
         else:
-            raise RuntimeError('Got unexpected donwsampletype %s, expected is [none, timepreserve, half]' % self.layer_type)
+            raise RuntimeError('Got unexpected downsampletype %s, expected is [none, timepreserve, half]' % self.layer_type)
 
 
 class UpSample(nn.Module):

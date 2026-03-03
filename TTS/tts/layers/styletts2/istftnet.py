@@ -118,7 +118,7 @@ class SineGen(torch.nn.Module):
     harmonic_num: number of harmonic overtones (default 0)
     sine_amp: amplitude of sine-wavefrom (default 0.1)
     noise_std: std of Gaussian noise (default 0.003)
-    voiced_thoreshold: F0 threshold for U/V classification (default 0)
+    voiced_threshold: F0 threshold for U/V classification (default 0)
     flag_for_pulse: this SinGen is used inside PulseGen (default False)
     Note: when flag_for_pulse is True, the first time step of a voiced
         segment is always sin(np.pi) or cos(0)

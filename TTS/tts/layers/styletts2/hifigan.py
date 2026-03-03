@@ -89,7 +89,7 @@ class SineGen(torch.nn.Module):
     harmonic_num: number of harmonic overtones (default 0)
     sine_amp: amplitude of sine-wavefrom (default 0.1)
     noise_std: std of Gaussian noise (default 0.003)
-    voiced_thoreshold: F0 threshold for U/V classification (default 0)
+    voiced_threshold: F0 threshold for U/V classification (default 0)
     flag_for_pulse: this SinGen is used inside PulseGen (default False)
     Note: when flag_for_pulse is True, the first time step of a voiced
         segment is always sin(np.pi) or cos(0)
@@ -450,9 +450,9 @@ class Decoder(nn.Module):
             downlist = [0, 3, 7, 15]
             N_down = downlist[random.randint(0, 3)]
             if F0_down:
-                F0_curve = nn.functional.conv1d(F0_curve.unsqueeze(1), torch.ones(1, 1, F0_down).to('cuda'), padding=F0_down//2).squeeze(1) / F0_down
+                F0_curve = nn.functional.conv1d(F0_curve.unsqueeze(1), torch.ones(1, 1, F0_down).to(F0_curve.device), padding=F0_down//2).squeeze(1) / F0_down
             if N_down:
-                N = nn.functional.conv1d(N.unsqueeze(1), torch.ones(1, 1, N_down).to('cuda'), padding=N_down//2).squeeze(1)  / N_down
+                N = nn.functional.conv1d(N.unsqueeze(1), torch.ones(1, 1, N_down).to(N.device), padding=N_down//2).squeeze(1)  / N_down
 
         
         F0 = self.F0_conv(F0_curve.unsqueeze(1))
