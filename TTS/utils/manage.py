@@ -15,8 +15,18 @@ from trainer.io import get_user_data_dir
 from typing_extensions import Required
 
 from TTS.config import load_config
+from TTS.tts.configs.qwen3_tts_config import Qwen3TTSConfig
 from TTS.tts.configs.tortoise_config import TortoiseConfig
 from TTS.vc.configs.knnvc_config import KNNVCConfig
+
+# Mapping from .models.json model names to Qwen3-TTS HuggingFace model variants
+_QWEN3_TTS_VARIANTS = {
+    "qwen3_tts": "Qwen/Qwen3-TTS-12Hz-1.7B-Base",
+    "qwen3_tts_custom_voice": "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice",
+    "qwen3_tts_voice_design": "Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign",
+    "qwen3_tts_0.6b": "Qwen/Qwen3-TTS-12Hz-0.6B-Base",
+    "qwen3_tts_0.6b_custom_voice": "Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice",
+}
 
 logger = logging.getLogger(__name__)
 
@@ -353,7 +363,7 @@ class ModelManager:
         # find downloaded files
         output_model_path = output_path
         output_config_path = output_model_path / "config.json"
-        if model not in ["tortoise-v2", "bark", "knnvc"]:
+        if model not in ["tortoise-v2", "bark", "knnvc"] and model not in _QWEN3_TTS_VARIANTS:
             output_model_path, output_config_path = self._find_files(output_path)
         if model == "knnvc" and not output_config_path.exists():
             knnvc_config = KNNVCConfig()
@@ -363,7 +373,15 @@ class ModelManager:
             if not output_config_path.is_file():
                 tortoise_config = TortoiseConfig()
                 tortoise_config.save_json(output_config_path)
-        if all(x not in model_name for x in ("fairseq", "openvoice")):
+        if model in _QWEN3_TTS_VARIANTS:
+            # Qwen3-TTS HF repos have a transformers-format config.json.
+            # Generate a separate coqui-TTS config file to avoid conflicts.
+            output_config_path = output_path / "coqui_tts_config.json"
+            if not output_config_path.is_file():
+                variant = _QWEN3_TTS_VARIANTS[model]
+                qwen3_config = Qwen3TTSConfig(model_variant=variant)
+                qwen3_config.save_json(output_config_path)
+        if all(x not in model_name for x in ("fairseq", "openvoice")) and model not in _QWEN3_TTS_VARIANTS:
             # Update paths in config, except for external models
             self._update_paths(output_path, output_config_path)
         return output_model_path, output_config_path, model_item

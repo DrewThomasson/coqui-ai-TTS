@@ -5,7 +5,10 @@
                 "xtts_v2": {
                     "description": "XTTS-v2.0.3 by Coqui with 17 languages.",
                     "repo_id": "tts-hub/XTTS-v2",
-                    "ignore": ["samples/*", "dvae.pth"],
+                    "ignore": [
+                        "samples/*",
+                        "dvae.pth"
+                    ],
                     "default_vocoder": null,
                     "license": "CPML",
                     "contact": "info@coqui.ai",
@@ -27,12 +30,49 @@
                     "contact": "egolge@coqui.ai"
                 },
                 "bark": {
-                    "description": "🐶 Bark TTS model released by suno-ai. You can find the original implementation in https://github.com/suno-ai/bark.",
+                    "description": "\ud83d\udc36 Bark TTS model released by suno-ai. You can find the original implementation in https://github.com/suno-ai/bark.",
                     "repo_id": "erogol/bark",
-                    "ignore": ["hubert.pt"],
+                    "ignore": [
+                        "hubert.pt"
+                    ],
                     "default_vocoder": null,
                     "license": "MIT",
                     "contact": "https://www.suno.ai/"
+                },
+                "qwen3_tts": {
+                    "description": "Qwen3-TTS 1.7B Base model with voice cloning support for 10 languages. Paper: https://arxiv.org/abs/2601.15621",
+                    "repo_id": "Qwen/Qwen3-TTS-12Hz-1.7B-Base",
+                    "default_vocoder": null,
+                    "license": "Apache-2.0",
+                    "contact": "https://github.com/QwenLM/Qwen3-TTS"
+                },
+                "qwen3_tts_custom_voice": {
+                    "description": "Qwen3-TTS 1.7B CustomVoice model with 9 preset speakers and instruction control for 10 languages.",
+                    "repo_id": "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice",
+                    "default_vocoder": null,
+                    "license": "Apache-2.0",
+                    "contact": "https://github.com/QwenLM/Qwen3-TTS"
+                },
+                "qwen3_tts_voice_design": {
+                    "description": "Qwen3-TTS 1.7B VoiceDesign model for generating speech with natural language voice descriptions.",
+                    "repo_id": "Qwen/Qwen3-TTS-12Hz-1.7B-VoiceDesign",
+                    "default_vocoder": null,
+                    "license": "Apache-2.0",
+                    "contact": "https://github.com/QwenLM/Qwen3-TTS"
+                },
+                "qwen3_tts_0.6b": {
+                    "description": "Qwen3-TTS 0.6B Base model (smaller) with voice cloning support for 10 languages.",
+                    "repo_id": "Qwen/Qwen3-TTS-12Hz-0.6B-Base",
+                    "default_vocoder": null,
+                    "license": "Apache-2.0",
+                    "contact": "https://github.com/QwenLM/Qwen3-TTS"
+                },
+                "qwen3_tts_0.6b_custom_voice": {
+                    "description": "Qwen3-TTS 0.6B CustomVoice model (smaller) with preset speakers for 10 languages.",
+                    "repo_id": "Qwen/Qwen3-TTS-12Hz-0.6B-CustomVoice",
+                    "default_vocoder": null,
+                    "license": "Apache-2.0",
+                    "contact": "https://github.com/QwenLM/Qwen3-TTS"
                 }
             }
         },
@@ -100,7 +140,7 @@
                     "description": "Tacotron2 with Double Decoder Consistency.",
                     "github_rls_url": "https://github.com/coqui-ai/TTS/releases/download/v0.6.1_models/tts_models--en--ljspeech--tacotron2-DDC.zip",
                     "default_vocoder": "vocoder_models/en/ljspeech/hifigan_v2",
-                    "author": "Eren Gölge @erogol",
+                    "author": "Eren G\u00f6lge @erogol",
                     "license": "apache 2.0",
                     "contact": "egolge@coqui.com"
                 },
@@ -108,7 +148,7 @@
                     "description": "Tacotron2 with Double Decoder Consistency with phonemes.",
                     "github_rls_url": "https://github.com/coqui-ai/TTS/releases/download/v0.6.1_models/tts_models--en--ljspeech--tacotron2-DDC_ph.zip",
                     "default_vocoder": "vocoder_models/en/ljspeech/univnet",
-                    "author": "Eren Gölge @erogol",
+                    "author": "Eren G\u00f6lge @erogol",
                     "license": "apache 2.0",
                     "contact": "egolge@coqui.com"
                 },
@@ -116,7 +156,7 @@
                     "description": "",
                     "github_rls_url": "https://github.com/coqui-ai/TTS/releases/download/v0.6.1_models/tts_models--en--ljspeech--glow-tts.zip",
                     "default_vocoder": "vocoder_models/en/ljspeech/multiband-melgan",
-                    "author": "Eren Gölge @erogol",
+                    "author": "Eren G\u00f6lge @erogol",
                     "license": "MPL",
                     "contact": "egolge@coqui.com"
                 },
@@ -124,7 +164,7 @@
                     "description": "Speedy Speech model trained on LJSpeech dataset using the Alignment Network for learning the durations.",
                     "github_rls_url": "https://github.com/coqui-ai/TTS/releases/download/v0.6.1_models/tts_models--en--ljspeech--speedy-speech.zip",
                     "default_vocoder": "vocoder_models/en/ljspeech/hifigan_v2",
-                    "author": "Eren Gölge @erogol",
+                    "author": "Eren G\u00f6lge @erogol",
                     "license": "apache 2.0",
                     "contact": "egolge@coqui.com"
                 },
@@ -132,7 +172,7 @@
                     "description": "Tacotron2 model trained with dynamic convolutional attention on the LJ Speech dataset",
                     "repo_id": "tts-hub/tacotron2_dca-en-ljspeech",
                     "default_vocoder": "vocoder_models/en/ljspeech/multiband-melgan",
-                    "author": "Eren Gölge @erogol",
+                    "author": "Eren G\u00f6lge @erogol",
                     "license": "MPL",
                     "contact": "egolge@coqui.com"
                 },
@@ -140,7 +180,7 @@
                     "description": "VITS is an End2End TTS model trained on LJSpeech dataset with phonemes.",
                     "github_rls_url": "https://github.com/coqui-ai/TTS/releases/download/v0.6.1_models/tts_models--en--ljspeech--vits.zip",
                     "default_vocoder": null,
-                    "author": "Eren Gölge @erogol",
+                    "author": "Eren G\u00f6lge @erogol",
                     "license": "apache 2.0",
                     "contact": "egolge@coqui.com"
                 },
@@ -155,7 +195,7 @@
                     "description": "FastPitch model trained on LJSpeech using the Aligner Network",
                     "github_rls_url": "https://github.com/coqui-ai/TTS/releases/download/v0.6.1_models/tts_models--en--ljspeech--fast_pitch.zip",
                     "default_vocoder": "vocoder_models/en/ljspeech/hifigan_v2",
-                    "author": "Eren Gölge @erogol",
+                    "author": "Eren G\u00f6lge @erogol",
                     "license": "apache 2.0",
                     "contact": "egolge@coqui.com"
                 },
@@ -163,7 +203,7 @@
                     "description": "Overflow model trained on LJSpeech",
                     "github_rls_url": "https://github.com/coqui-ai/TTS/releases/download/v0.10.0_models/tts_models--en--ljspeech--overflow.zip",
                     "default_vocoder": "vocoder_models/en/ljspeech/hifigan_v2",
-                    "author": "Eren Gölge @erogol",
+                    "author": "Eren G\u00f6lge @erogol",
                     "license": "apache 2.0",
                     "contact": "egolge@coqui.ai"
                 },
@@ -199,7 +239,7 @@
                     "description": "Tacotron2 with Dynamic Convolutional Attention trained with Accenture's non-binary Sam dataset.",
                     "repo_id": "tts-hub/tacotron2_dca-en-sam",
                     "default_vocoder": "vocoder_models/en/sam/hifigan_v2",
-                    "author": "Eren Gölge @erogol",
+                    "author": "Eren G\u00f6lge @erogol",
                     "license": "apache 2.0",
                     "contact": "egolge@coqui.com"
                 }
@@ -226,8 +266,14 @@
                 "tortoise-v2": {
                     "description": "Tortoise tts model https://github.com/neonbjb/tortoise-tts",
                     "repo_id": "jbetker/tortoise-tts-v2",
-                    "allow": ["data/mel_norms.pth", ".models/*.pth"],
-                    "ignore": [".models/classifier.pth", "clvp.pth"],
+                    "allow": [
+                        "data/mel_norms.pth",
+                        ".models/*.pth"
+                    ],
+                    "ignore": [
+                        ".models/classifier.pth",
+                        "clvp.pth"
+                    ],
                     "default_vocoder": null,
                     "author": "@neonbjb - James Betker, @manmay-nakhashi Manmay Nakhashi",
                     "license": "apache 2.0"
@@ -249,7 +295,7 @@
                     "description": "Tacotron2 model trained on M-AILABS dataset (speaker angelina)",
                     "repo_id": "tts-hub/tacotron2_ddc-es-mai",
                     "default_vocoder": "vocoder_models/universal/libri-tts/fullband-melgan",
-                    "author": "Eren Gölge @erogol",
+                    "author": "Eren G\u00f6lge @erogol",
                     "license": "MPL",
                     "contact": "egolge@coqui.com"
                 }
@@ -269,7 +315,7 @@
                     "description": "Tacotron2 model trained on M-AILABS dataset (speaker ezwa)",
                     "repo_id": "tts-hub/tacotron2_ddc-fr-mai",
                     "default_vocoder": "vocoder_models/universal/libri-tts/fullband-melgan",
-                    "author": "Eren Gölge @erogol",
+                    "author": "Eren G\u00f6lge @erogol",
                     "license": "MPL",
                     "contact": "egolge@coqui.com"
                 }
@@ -634,7 +680,10 @@
                 },
                 "vits-female": {
                     "repo_id": "Kamtera/persian-tts-female-vits",
-                    "allow": ["best_model_30824.pth", "config.json"],
+                    "allow": [
+                        "best_model_30824.pth",
+                        "config.json"
+                    ],
                     "default_vocoder": null,
                     "description": "persian-tts-female-vits model for text to speech purposes. Single-speaker female voice trained on persian-tts-dataset-female.\nDataset: https://www.kaggle.com/datasets/magnoliasis/persian-tts-dataset-famale.",
                     "author": "@karim23657",
@@ -662,9 +711,9 @@
         },
         "be": {
             "common-voice": {
-                "glow-tts":{
+                "glow-tts": {
                     "description": "Belarusian GlowTTS model created by @alex73 (Github).",
-                    "github_rls_url":"https://github.com/coqui-ai/TTS/releases/download/v0.16.6/tts_models--be--common-voice--glow-tts.zip",
+                    "github_rls_url": "https://github.com/coqui-ai/TTS/releases/download/v0.16.6/tts_models--be--common-voice--glow-tts.zip",
                     "default_vocoder": "vocoder_models/be/common-voice/hifigan",
                     "license": "CC-BY-SA 4.0",
                     "contact": "alex73mail@gmail.com"
@@ -677,13 +726,13 @@
             "libri-tts": {
                 "wavegrad": {
                     "github_rls_url": "https://github.com/coqui-ai/TTS/releases/download/v0.6.1_models/vocoder_models--universal--libri-tts--wavegrad.zip",
-                    "author": "Eren Gölge @erogol",
+                    "author": "Eren G\u00f6lge @erogol",
                     "license": "MPL",
                     "contact": "egolge@coqui.com"
                 },
                 "fullband-melgan": {
                     "github_rls_url": "https://github.com/coqui-ai/TTS/releases/download/v0.6.1_models/vocoder_models--universal--libri-tts--fullband-melgan.zip",
-                    "author": "Eren Gölge @erogol",
+                    "author": "Eren G\u00f6lge @erogol",
                     "license": "MPL",
                     "contact": "egolge@coqui.com"
                 }
@@ -714,7 +763,7 @@
             "ljspeech": {
                 "multiband-melgan": {
                     "github_rls_url": "https://github.com/coqui-ai/TTS/releases/download/v0.6.1_models/vocoder_models--en--ljspeech--multiband-melgan.zip",
-                    "author": "Eren Gölge @erogol",
+                    "author": "Eren G\u00f6lge @erogol",
                     "license": "MPL",
                     "contact": "egolge@coqui.com"
                 },
@@ -755,7 +804,7 @@
                 "hifigan_v2": {
                     "description": "Finetuned and intended to be used with tts_models/en/sam/tacotron_DDC",
                     "github_rls_url": "https://github.com/coqui-ai/TTS/releases/download/v0.6.1_models/vocoder_models--en--sam--hifigan_v2.zip",
-                    "author": "Eren Gölge @erogol",
+                    "author": "Eren G\u00f6lge @erogol",
                     "license": "apache 2.0",
                     "contact": "egolge@coqui.ai"
                 }
@@ -851,7 +900,9 @@
                 },
                 "openvoice_v1": {
                     "repo_id": "myshell-ai/OpenVoice",
-                    "allow": ["checkpoints/converter/*"],
+                    "allow": [
+                        "checkpoints/converter/*"
+                    ],
                     "description": "OpenVoice VC model from https://huggingface.co/myshell-ai/OpenVoiceV2",
                     "default_vocoder": null,
                     "author": "MyShell.ai",
@@ -859,7 +910,9 @@
                 },
                 "openvoice_v2": {
                     "repo_id": "myshell-ai/OpenVoiceV2",
-                    "allow": ["converter/*"],
+                    "allow": [
+                        "converter/*"
+                    ],
                     "description": "OpenVoice VC model from https://huggingface.co/myshell-ai/OpenVoiceV2",
                     "default_vocoder": null,
                     "author": "MyShell.ai",
