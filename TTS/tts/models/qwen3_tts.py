@@ -34,10 +34,7 @@ def _import_qwen_tts():
 
         return Qwen3TTSModel
     except ImportError:
-        msg = (
-            "Qwen3-TTS requires the `qwen-tts` package. "
-            "Install it with: pip install qwen-tts"
-        )
+        msg = "Qwen3-TTS requires the `qwen-tts` package. Install it with: pip install qwen-tts"
         raise ImportError(msg)
 
 
