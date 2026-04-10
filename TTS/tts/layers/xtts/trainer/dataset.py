@@ -106,12 +106,13 @@ class XTTSDataset(torch.utils.data.Dataset):
         return tokens
 
     def load_item(self, sample):
-        text = str(sample["text"])
+        raw_text = sample["text"]
+        if raw_text is None or str(raw_text).strip() == "":
+            raise ValueError
+        text = str(raw_text)
         tseq = self.get_text(text, sample["language"])
         audiopath = sample["audio_file"]
         wav = load_audio(audiopath, self.sample_rate)
-        if text is None or len(text.strip()) == 0:
-            raise ValueError
         if wav is None or wav.shape[-1] < (0.5 * self.sample_rate):
             # Ultra short clips are also useless (and can cause problems within some models).
             raise ValueError
