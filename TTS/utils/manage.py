@@ -353,7 +353,7 @@ class ModelManager:
         # find downloaded files
         output_model_path = output_path
         output_config_path = output_model_path / "config.json"
-        if model not in ["tortoise-v2", "bark", "knnvc"]:
+        if model not in ["tortoise-v2", "bark", "knnvc", "style_tts2", "style_tts2-multispeaker"]:
             output_model_path, output_config_path = self._find_files(output_path)
         if model == "knnvc" and not output_config_path.exists():
             knnvc_config = KNNVCConfig()
@@ -363,6 +363,16 @@ class ModelManager:
             if not output_config_path.is_file():
                 tortoise_config = TortoiseConfig()
                 tortoise_config.save_json(output_config_path)
+        if model in ("style_tts2", "style_tts2-multispeaker") and not output_config_path.exists():
+            output_config_path = output_path / "config.json"
+            if not output_config_path.is_file():
+                from TTS.tts.configs.style_tts2_config import StyleTTS2Config
+
+                styletts2_config = StyleTTS2Config()
+                if "multispeaker" in model:
+                    styletts2_config.multispeaker = True
+                    styletts2_config._supports_cloning = True
+                styletts2_config.save_json(output_config_path)
         if all(x not in model_name for x in ("fairseq", "openvoice")):
             # Update paths in config, except for external models
             self._update_paths(output_path, output_config_path)
